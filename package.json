@@ -40,7 +40,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.10",
     "exceljs": "^4.4.0",
     "html2canvas-pro": "^1.5.8",
     "jspdf": "^3.0.1",
