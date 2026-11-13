@@ -49,6 +49,13 @@ async function run(cmd, args) {
 
 async function main() {
   await rm("out", { recursive: true, force: true });
+  // `next dev` writes .next/dev/types/validator.ts, which imports every route
+  // under src/app/api. This build moves src/app/api aside, so that generated
+  // file then points at modules that are not there and `next build` fails type
+  // checking — meaning the Android build broke for anyone who had run the dev
+  // server in the same checkout, with an error naming routes they never
+  // touched. The dev server's own types are rebuilt next time it starts.
+  await rm(".next/dev", { recursive: true, force: true });
   await setAside();
   try {
     await run("npx", ["next", "build"]);

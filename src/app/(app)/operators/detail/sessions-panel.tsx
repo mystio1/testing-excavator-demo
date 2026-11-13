@@ -129,7 +129,7 @@ export function SessionsPanel({ operatorId }: { operatorId: string }) {
   const activePeriod = periods.find((p) => p.status === "ACTIVE") ?? null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" data-agent-id="sessions-panel">
       <div className="flex flex-wrap gap-2">
         <StartSessionDialog
           operatorId={operatorId}
@@ -188,7 +188,7 @@ export function SessionsPanel({ operatorId }: { operatorId: string }) {
       ))}
 
       {leaves.length > 0 && (
-        <Card>
+        <Card data-agent-id="leaves-list">
           <CardContent className="flex flex-col gap-2">
             <p className="text-base font-bold">Leaves</p>
             {leaves.map((l) => (

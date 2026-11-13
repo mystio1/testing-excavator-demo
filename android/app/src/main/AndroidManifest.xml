@@ -43,4 +43,15 @@
          via system Settings the first time, and then confirm each install
          in Android's own installer screen. See UpdateInstallerPlugin. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- The assistant's voice input. getUserMedia() inside the WebView cannot
+         work without this, whatever the page does: Android checks the app's own
+         permission before the WebView is allowed the microphone at all, so the
+         browser-level "please allow the microphone" prompt never even appears.
+         RECORD_AUDIO is a runtime permission on Android 6+, so holding it here
+         is necessary but not sufficient — MainActivity asks for it the first
+         time the assistant needs it. MODIFY_AUDIO_SETTINGS lets the recorder
+         apply the noise suppression and automatic gain the yard needs. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 </manifest>

@@ -211,7 +211,9 @@ export function CurrentWorkTab({
 
   return (
     <div className="flex flex-col gap-4">
-      <Card>
+      {/* The assistant treats this card appearing as proof a job really started
+          — until it is on screen, nothing is reported as saved. */}
+      <Card data-agent-id="active-work-card">
         <CardContent className="flex flex-col gap-3">
           <div className="-mb-1 flex items-center justify-between">
             <p className="text-sm font-semibold">Current Job</p>
@@ -250,7 +252,9 @@ export function CurrentWorkTab({
       </Card>
 
       {activeWork.dailyLogs.length > 0 && (
-        <Card>
+        // Proof a reading was really added: the assistant waits for this list
+        // before it says anything was saved.
+        <Card data-agent-id="readings-list">
           <CardContent className="flex flex-col gap-2">
             <p className="text-sm font-semibold text-muted-foreground">Daily Log</p>
             {activeWork.dailyLogs.map((log) => (

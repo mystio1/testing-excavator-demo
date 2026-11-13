@@ -7,7 +7,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["tests/**/*.test.ts"],
+    // .tsx as well: the agent's DOM controller is tested against the app's
+    // REAL dialog components, which have to be rendered to prove that a value
+    // the controller sets actually reaches React's state (see
+    // tests/agent/real-forms.test.tsx).
+    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     setupFiles: ["tests/setup.ts"],
     // DB-backed tests create their own throwaway tenants (unique business
     // codes) and clean them up, but the Supabase session pooler is capped at 15

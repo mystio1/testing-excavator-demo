@@ -137,6 +137,13 @@ export default function SiteAnalysisPage() {
           />
         </div>
 
+        {/* The annotation wraps BOTH the list and the empty state. Inside the
+            list alone it vanished whenever there were no sites, so the
+            assistant answered "I couldn't confirm" for a page that was
+            perfectly correct and simply empty — "you have no sites yet" is a
+            real answer to "show me my sites". Caught by the browser coverage
+            pass; approvals.view had the same shape and was already fixed. */}
+        <div data-agent-id="site-list" className="flex flex-col gap-3">
         {sites.length === 0 ? (
           <EmptyState
             icon={MapPin}
@@ -146,7 +153,12 @@ export default function SiteAnalysisPage() {
         ) : (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {sites.map((s) => (
-              <Card key={s.id}>
+              // The label is what the assistant matches a spoken site name
+              // against, so it carries the customer too: "Wakad" and "Shree ka
+              // site" are both things an owner says for the same place.
+              <Card
+                key={s.id}
+              >
                 <CardContent className="flex flex-col gap-3">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -167,10 +179,19 @@ export default function SiteAnalysisPage() {
                     <KeyValue label="Pending" value={formatCurrency(s.pending)} />
                     <KeyValue label="Last Work" value={s.lastWorkDate ? fmtDay(s.lastWorkDate) : "—"} />
                   </div>
+                  {/* Annotated on the control that NAVIGATES, not on the card
+                      around it — machine-card does the same. The assistant
+                      clicks the element it was given, and a <Card> has no
+                      handler, so annotating the wrapper meant every click did
+                      nothing and the run reported "I couldn't confirm". The
+                      label carries the site and its customer, because the
+                      link's own text is just "View Site". */}
                   <Button
                     size="lg"
                     className="h-11"
                     nativeButton={false}
+                    data-agent-id="site-card"
+                    data-agent-label={[s.name, s.customerName].filter(Boolean).join(" ")}
                     render={<Link href={`/site-analysis/detail${qs({ id: s.id })}${detailQuery.replace("?", "&")}`} />}
                   >
                     <Banknote className="size-4" />
@@ -181,6 +202,7 @@ export default function SiteAnalysisPage() {
             ))}
           </div>
         )}
+        </div>
         <Pager page={data.page} totalPages={data.totalPages} total={data.total} noun="site" onPage={setPage} />
       </div>
     </div>

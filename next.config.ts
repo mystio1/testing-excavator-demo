@@ -43,7 +43,15 @@ const baseSecurityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()" },
+  // microphone=(self): the assistant's voice input needs it, and an empty
+  // allowlist makes the browser refuse outright WITHOUT ever prompting — so a
+  // "please allow the microphone" message could never be acted on. (self)
+  // grants it to this origin alone; a third-party iframe still cannot ask.
+  // Everything else stays off, including the camera.
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), interest-cohort=()",
+  },
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
 ];
 

@@ -41,6 +41,16 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  // Playwright fixtures take a callback named `use` — that is the framework's
+  // own API for providing a fixture to a test, and it has nothing to do with
+  // React's `use`. The React hooks rule cannot tell them apart and reports a
+  // rules-of-hooks violation in a file with no React in it at all.
+  {
+    files: ["tests/e2e/**/*.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

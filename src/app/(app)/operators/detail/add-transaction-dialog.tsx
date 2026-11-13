@@ -85,7 +85,7 @@ export function AddTransactionDialog({
   return (
     <div className="flex flex-col gap-2">
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogTrigger render={<Button size="lg" className="h-11" />}>
+        <DialogTrigger data-agent-id="add-transaction-trigger" render={<Button size="lg" className="h-11" />}>
           <IndianRupee className="size-4" />
           Add Money Transaction
         </DialogTrigger>
@@ -104,7 +104,7 @@ export function AddTransactionDialog({
             {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
             <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-              <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
+              <Button type="submit" data-agent-id="add-transaction-submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
                 {pending ? "Saving..." : "Save Transaction"}
               </Button>
             </DialogFooter>

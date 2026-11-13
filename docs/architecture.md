@@ -29,7 +29,17 @@ codebase ships as a web app (Render) and as an Android app (Capacitor).
 | API | `src/app/api/**` | Thin: authenticate, validate, call one service, translate the result into the standard error contract. |
 | Services | `src/lib/services/**` | All business rules. Every query is scoped by `businessId` passed explicitly — never looked up by id alone. Expected failures are returned as `fail(code, message)`. |
 | Cross-cutting | `src/lib/*.ts` | `money`, `audit`, `idempotency`, `rateLimit`, `csrf`, `logger`, `tx`, `pagination`, `config`. |
+| Assistant | `src/lib/agent/**`, `src/components/agent/**`, `src/app/api/agent/**` | Voice/text assistant that drives the UI above as the owner. It has no database access and no API of its own for changing data: it fills the same forms, so every validation, audit entry and tenant check applies unchanged. See [assistant.md](assistant.md). |
 | Data | `prisma/` | Schema + migrations (never `db push` in production). |
+
+## The assistant
+
+A voice and text assistant operates the app for owners who may not read
+comfortably. It is a client of the layers above, not a layer beside them — it
+plans a sequence of UI actions, drives real controls by `data-agent-id`, and
+confirms a save only once the app's own screen shows the record. The model
+chooses between registered capabilities; it never composes one. See
+[assistant.md](assistant.md).
 
 ## Multi-tenancy
 
@@ -81,6 +91,16 @@ Postgres `NUMERIC` ⇄ `Prisma.Decimal`, ROUND_HALF_UP to 2 dp, one helper modul
 * **Append-only audit trail** (`AuditLog`, DB trigger) for every financial edit.
 * **Health**: `GET /api/health` (liveness, no DB) and `GET /api/health/ready`
   (database + required config). Logs are structured JSON with request ids.
+* **A hung-up client is not a 500.** When the phone loses signal mid-request,
+  Node rejects the pending request with `aborted`/ECONNRESET, which reaches the
+  handler looking like a server fault. `withApi` recognises that exact
+  signature and answers 499 (`isClientDisconnect`), so it is logged as a
+  request and not as a failure. This matters because of where the app runs: on
+  a phone in a yard a dropped connection is ordinary, and counted as 500s they
+  would make the error rate a measure of signal strength rather than of
+  correctness. The check is deliberately narrow and runs *before* the
+  database-unavailable check, which also matches ECONNRESET — a disconnect must
+  never be reported to the owner as a database outage.
 
 ## Deployment
 

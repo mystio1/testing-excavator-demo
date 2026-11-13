@@ -45,6 +45,27 @@ model Business {
   // deliberately sets a cap; enforced at operator creation and bill
   // creation respectively.
   frozen         Boolean @default(false)
+  // Per-business switch for the assistant. On by default; support turns it off
+  // for one business without a deploy when it misbehaves for them, and the
+  // owner keeps the whole app. Checked on the server, so turning it off is not
+  // merely a hidden button — the routes refuse.
+  assistantEnabled Boolean @default(true)
+  // Diagnostics for the assistant, ON only until this moment passes.
+  //
+  // A deliberate timestamp rather than a boolean: what is recorded while it is
+  // on is what the owner actually SAID, which can carry their customers'
+  // names and numbers. A flag can be left on by accident forever; a window
+  // closes itself. Null or past means nothing is recorded, which is the
+  // default for every business.
+  diagnosticsUntil DateTime?
+  // Per-business model override for the assistant. Null means the deployment's
+  // own choice (GROQ_MODEL). It exists so one business can be moved to a
+  // different model without moving everyone — to try a better one on a willing
+  // customer, or to move one off a model that is answering them badly, neither
+  // of which should require a deploy. Validated against an allowlist, not
+  // taken as free text: an arbitrary string here would be a way to point this
+  // business's spending at an unknown model.
+  assistantModel   String?
   maxOperators   Int?
   maxBillsPerDay Int?
 
@@ -73,6 +94,10 @@ model Business {
   transactionCategories TransactionCategory[]
   operatorWorkRequests  OperatorWorkRequest[]
   auditLogs             AuditLog[]
+  agentTasks            AgentTask[]
+  agentUsage            AgentUsage[]
+  agentTurnLogs         AgentTurnLog[]
+  agentNameAliases      AgentNameAlias[]
 }
 
 // Written by support-console actions (see src/lib/services/support.ts) —
@@ -154,6 +179,17 @@ model User {
   // top of an already-valid session, not a replacement for passwordHash.
   // Null means the owner hasn't turned this on; set from Settings.
   appPinHash       String?
+  // Voice consent for the assistant. Speaking to it sends a few seconds of
+  // audio — which carries customer names and phone numbers — to a speech
+  // service outside India, so the owner is told that plainly and asked once
+  // before the microphone is ever used. Null means never asked or declined;
+  // the assistant still works by typing either way. Stored rather than kept in
+  // the browser because consent has to be demonstrable, and a localStorage
+  // flag proves nothing and is lost with the device.
+  voiceConsentAt   DateTime?
+  // Which wording they agreed to, so a later change to the notice does not
+  // silently inherit an older consent.
+  voiceConsentText String?
   createdAt        DateTime  @default(now())
 
   business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
@@ -854,6 +890,138 @@ model IdempotencyKey {
 
 // Sliding-window-counter rate limiting shared by every app instance and
 // surviving restarts (see src/lib/rateLimit.ts). One row per (key, window).
+// A half-finished assistant turn, waiting on the owner.
+//
+// These lived in a Map in one process, which was fine until it wasn't: Render
+// restarts on every deploy and spins down on the free tier, and more than one
+// instance can serve the same owner. The owner would tap "Yes, save it" and be
+// told "That request has expired" — on the one action in the whole product
+// that needs their explicit approval to happen at all.
+//
+// Short-lived by design (swept after TASK_TTL_MS). It holds what was said and
+// what was gathered, which is the owner's own words about their own business —
+// never anything from another tenant, and never a credential.
+model AgentTask {
+  id         String   @id
+  businessId String
+  // The task belongs to this user, not merely to this business: holding a task
+  // id must be useless without being the person it was opened for.
+  userId     String
+  lang       String   @default("en")
+  state      String
+  workflowId String?
+  // Values gathered so far, already resolved where they name a record.
+  fields     Json     @default("{}")
+  // What was actually asked, so a read-only task can answer THAT from the
+  // screen rather than merely reporting that it got there.
+  question   String?
+  // Fingerprint of exactly what was approved — a later change cannot ride in
+  // on an older yes.
+  confirmedFingerprint String?
+  operationId          String?
+  // "Start all the machines" — the same instruction applied to several records,
+  // one at a time. Holds which record is being done now, which are still to
+  // come, and which are already finished, so a batch survives the page being
+  // reloaded and can say "3 of 7" rather than starting over.
+  batch      Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, userId])
+  @@index([updatedAt])
+}
+
+// What the assistant has cost this business this month.
+//
+// Groq bills by tokens, not by request, so a request count would be a
+// comfortable number that is not the bill. One row per business per month,
+// incremented atomically — nothing here is per-turn history (that is
+// AgentTurnLog, which expires); this is the running total a cap is checked
+// against and an invoice is explained with.
+model AgentUsage {
+  id         String   @id @default(cuid())
+  businessId String
+  /** "2026-10" — the billing month this row totals, in UTC. */
+  month      String
+  /** Reasoning-model calls, and the tokens they actually consumed. */
+  askCalls   Int      @default(0)
+  askTokens  Int      @default(0)
+  /** Speech-to-text clips, and their total length. Whisper is billed by audio
+   * seconds rather than tokens, so it is counted in its own currency. */
+  listenCalls   Int   @default(0)
+  listenSeconds Int   @default(0)
+  updatedAt  DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, month])
+  @@index([month])
+}
+
+// One assistant turn, kept briefly so support can see what actually happened.
+//
+// The audit trail records what was approved and what the screen confirmed,
+// which answers "what changed" but not "why did it understand me that way".
+// For that you need the owner's own words and the model's raw reply — and
+// those are the sensitive parts, so this table only fills while a business has
+// Business.diagnosticsUntil set in the future, and every row is swept after a
+// short retention window. Nothing here is a system of record; the audit trail
+// is.
+model AgentTurnLog {
+  id         String   @id @default(cuid())
+  businessId String
+  userId     String
+  taskId     String?
+  lang       String
+  /** What the owner said or typed. Bounded by the request schema. */
+  utterance  String
+  /** The model's reply exactly as parsed — which capability, which values. */
+  modelReply Json?
+  workflowId String?
+  /** "action" | "clarify" | "reply" | "error", plus the error kind when one. */
+  outcome    String
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, createdAt])
+  @@index([createdAt])
+}
+
+// What a mishearing turned out to mean.
+//
+// Whisper writes "Bundapot" where the owner said "Banda Patil", and a name
+// spelled differently matches no record — so a clear instruction ends in
+// "I couldn't find that". The vocabulary prompt (vocabulary.ts) reduces this
+// but cannot eliminate it, and the owner should not have to re-say a name the
+// app has already failed to hear once.
+//
+// So when they pick the record they meant, the pairing is kept: the next time
+// that same mishearing arrives it resolves straight away, and the corrected
+// spelling also goes into the prompt so Whisper is less likely to repeat it.
+model AgentNameAlias {
+  id         String   @id @default(cuid())
+  businessId String
+  /** The misheard form, normalized (see text.ts) — what to match against. */
+  heard      String
+  /** "machine" | "operator" | "customer" | "site" — scoped, so a customer
+   * called "Patil" cannot start resolving an operator. */
+  kind       String
+  /** The record's own label, exactly as the app writes it. */
+  label      String
+  /** How often this pairing has been used, so a stale one can be spotted. */
+  hits       Int      @default(1)
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, kind, heard])
+  @@index([businessId])
+}
+
 model RateLimitBucket {
   key         String
   windowStart DateTime

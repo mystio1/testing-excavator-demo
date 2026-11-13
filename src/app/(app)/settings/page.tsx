@@ -1,10 +1,13 @@
 "use client";
 
 import useSWR from "swr";
+import Link from "next/link";
+import { Bot, ChevronRight } from "lucide-react";
 import type { getBusinessSettings, listBankAccounts } from "@/lib/services/settings";
 import type { Plain } from "@/lib/plain";
 import { swrFetcher } from "@/lib/api-client";
 import { PageHeader } from "@/components/page-header";
+import { Card, CardContent } from "@/components/ui/card";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { AppVersionFooter } from "@/components/app-version-footer";
 import { BusinessProfileForm } from "./business-profile-form";
@@ -34,6 +37,22 @@ export default function SettingsPage() {
       <PageHeader title="Settings" backHref="/dashboard" />
       <div className="flex flex-col gap-4 px-4 pb-6 md:px-8">
         <ThemeSwitcher />
+        {/* Discoverable without having to ask for it: checking up on something
+            that acts on your behalf should not require knowing the words. */}
+        <Card>
+          <CardContent>
+            <Link
+              href="/settings/assistant"
+              className="flex min-h-12 items-center justify-between gap-3"
+            >
+              <span className="flex items-center gap-2 text-base font-semibold">
+                <Bot className="size-5" />
+                What the assistant did
+              </span>
+              <ChevronRight className="size-5 text-muted-foreground" />
+            </Link>
+          </CardContent>
+        </Card>
         <BusinessCodeCard code={business.code} />
         <AppLockSection hasPin={hasPin} />
         <ChangePasswordCard />

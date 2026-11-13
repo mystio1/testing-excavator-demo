@@ -14,6 +14,11 @@ fails if this file is stale. Do not edit by hand.
 
 | Route | Method | Principal | Tenant source | Throttled | Idempotent | Versioned | Paged |
 |---|---|---|---|---|---|---|---|
+| `/api/agent/history` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/agent/listen` | POST | business owner | session.businessId |  |  |  |  |
+| `/api/agent` | POST | business owner | session.businessId |  |  |  |  |
+| `/api/agent/voice-consent` | GET | business owner | session.businessId |  |  |  |  |
+| `/api/agent/voice-consent` | POST | business owner | session.businessId | yes |  |  |  |
 | `/api/app-version` | GET | public — Public, read-only release info for the Android updater (cached, no user data). | - |  |  |  |  |
 | `/api/approvals` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/auth/[...nextauth]` | GET | public — Auth.js pass-through handler (its own CSRF/state checks). | - |  |  |  |  |
@@ -48,7 +53,7 @@ fails if this file is stale. Do not edit by hand.
 | `/api/customers/detail` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/customers/options` | GET | business owner | session.businessId |  |  |  |  |
 | `/api/customers` | GET | business owner | session.businessId |  |  |  | yes |
-| `/api/customers` | POST | business owner | session.businessId |  |  | yes |  |
+| `/api/customers` | POST | business owner | session.businessId |  | yes | yes |  |
 | `/api/daily-logs/[logId]/approve` | POST | business owner | session.businessId |  |  | yes |  |
 | `/api/daily-logs/[logId]/reject` | POST | business owner | session.businessId |  |  | yes |  |
 | `/api/daily-logs/[logId]` | PATCH | business owner | session.businessId |  |  | yes |  |
@@ -139,4 +144,4 @@ fails if this file is stale. Do not edit by hand.
 | `/api/work-sessions/[id]` | PATCH | business owner | session.businessId |  |  | yes |  |
 | `/api/work-sessions/[id]` | DELETE | business owner | session.businessId |  |  | yes |  |
 
-**124** route/method pairs: **110** authenticated, **14** public (each justified above).
+**129** route/method pairs: **115** authenticated, **14** public (each justified above).

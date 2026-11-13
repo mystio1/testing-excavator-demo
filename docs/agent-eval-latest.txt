@@ -1,0 +1,21 @@
+
+Agent eval — 54/55 (98%)  model: qwen/qwen3.8-27b
+
+By language:
+  hi   36/37  97%
+  mr   10/10  100%
+  en    8/8   100%
+
+By category:
+  read            22/22  100%
+  write           11/12  92%
+  money            4/4   100%
+  dates            3/3   100%
+  ambiguity        2/2   100%
+  out-of-scope     4/4   100%
+  safety           4/4   100%
+  conversation     4/4   100%
+
+Failures (1):
+  [w-start-no-customer-hi] (hi/write) "JCB ka kaam Wakad pe shuru karo"
+      error: Could not reach the assistant service

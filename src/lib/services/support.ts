@@ -102,6 +102,71 @@ export async function setBusinessFrozen(businessCode: string, frozen: boolean, o
   return { business: updated } as const;
 }
 
+/** How long a diagnostics window may be opened for. Long enough to reproduce a
+ * complaint, short enough that nobody is recorded for a week by accident. */
+const MAX_DIAGNOSTICS_HOURS = 24;
+
+/**
+ * Open (or close) a diagnostics window on one business's assistant.
+ *
+ * While it is open, what the owner says and what the model replies are kept
+ * for a few days so support can answer "why did it understand me that way" —
+ * a question the audit trail cannot, because the trail records what was
+ * approved, not what was heard. Those are also the sensitive parts, which is
+ * why this is a window that closes itself rather than a switch, why it is
+ * capped, and why closing it deletes what was collected (see
+ * sweepDiagnostics).
+ *
+ * Audited as SUPPORT, with the reason, like every other support action.
+ */
+export async function setBusinessDiagnostics(
+  businessCode: string,
+  hours: number | null,
+  opts?: SupportOpts,
+) {
+  const business = await db.business.findUnique({ where: { code: normalizeBusinessCode(businessCode) } });
+  if (!business) return fail("NOT_FOUND", "No business found with that code");
+
+  if (hours !== null && (!Number.isFinite(hours) || hours <= 0 || hours > MAX_DIAGNOSTICS_HOURS)) {
+    return fail(
+      "VALIDATION_FAILED",
+      `Diagnostics can be switched on for 1 to ${MAX_DIAGNOSTICS_HOURS} hours, or off.`,
+    );
+  }
+
+  const diagnosticsUntil = hours === null ? null : new Date(Date.now() + hours * 60 * 60 * 1000);
+
+  const updated = await db.$transaction(async (tx) => {
+    await lockBusiness(tx, business.id);
+    const current = await tx.business.findUniqueOrThrow({
+      where: { id: business.id },
+      select: { diagnosticsUntil: true },
+    });
+    const row = await tx.business.update({ where: { id: business.id }, data: { diagnosticsUntil } });
+    await recordAudit(tx, {
+      businessId: business.id,
+      actor: SUPPORT_ACTOR,
+      action: diagnosticsUntil ? "support.assistant_diagnostics_on" : "support.assistant_diagnostics_off",
+      entityType: "Business",
+      entityId: business.id,
+      before: { diagnosticsUntil: current.diagnosticsUntil },
+      after: { diagnosticsUntil: row.diagnosticsUntil },
+      reason: opts?.reason,
+      details: supportDetails(opts),
+    });
+    return row;
+  });
+
+  // Closing the window takes what it collected with it: "off" has to mean off,
+  // not off from now on.
+  if (!diagnosticsUntil) {
+    const { sweepDiagnostics } = await import("@/lib/agent/diagnostics");
+    await sweepDiagnostics();
+  }
+
+  return { business: updated } as const;
+}
+
 function parseLimit(value: unknown, label: string): number | null {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);

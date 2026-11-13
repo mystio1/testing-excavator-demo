@@ -12,7 +12,14 @@ type Excavator = Plain<Awaited<ReturnType<typeof listExcavators>>[number]>;
 
 export function MachineCard({ excavator: ex }: { excavator: Excavator }) {
   return (
-    <Link href={`/excavators/detail?id=${ex.id}`}>
+    <Link
+      href={`/excavators/detail?id=${ex.id}`}
+      // Handles for the in-app assistant. The label carries both the name and
+      // the number so "Komatsu" and "machine number 2" reach the same card, and
+      // two cards matching is a question for the owner, not a guess.
+      data-agent-id="machine-card"
+      data-agent-label={[ex.name, ex.machineNumber].filter(Boolean).join(" ")}
+    >
       <Card className="card-hover animate-fade-in-up h-full overflow-hidden py-0">
         <div className="flex items-center justify-between gap-2 bg-primary/8 px-4 py-3">
           <div className="flex items-center gap-2.5 min-w-0">

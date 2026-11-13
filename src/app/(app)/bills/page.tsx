@@ -151,7 +151,7 @@ export default function BillsPage() {
           </div>
         }
       />
-      <div className="flex flex-col gap-3 px-4 pb-6 md:px-8">
+      <div data-agent-id="bill-list" className="flex flex-col gap-3 px-4 pb-6 md:px-8">
         <div className="grid grid-cols-3 gap-2 rounded-lg bg-muted p-1 text-sm">
           {FILTERS.map((f) => {
             const count = f.id === "all" ? counts.all : f.id === "app" ? counts.app : counts.self;

@@ -48,7 +48,7 @@ export function AssignOperatorDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm" variant="secondary" />}>
+      <DialogTrigger data-agent-id="assign-operator-trigger" render={<Button size="sm" variant="secondary" />}>
         <HardHat className="size-4" />
         {hasCurrentOperator ? "Change" : "Assign"}
       </DialogTrigger>
@@ -64,7 +64,7 @@ export function AssignOperatorDialog({
             {operators.length === 0 ? (
               <p className="text-sm text-muted-foreground">Add an operator first.</p>
             ) : (
-              <NativeSelect id="operatorId" name="operatorId" required defaultValue="">
+              <NativeSelect id="operatorId" data-agent-id="assign-operator-select" name="operatorId" required defaultValue="">
                 <option value="" disabled>
                   Select operator
                 </option>
@@ -80,7 +80,7 @@ export function AssignOperatorDialog({
           {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
           <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-            <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending || operators.length === 0}>
+            <Button type="submit" data-agent-id="assign-operator-submit" size="lg" className="h-12 w-full text-base" disabled={pending || operators.length === 0}>
               {pending ? "Saving..." : hasCurrentOperator ? "Change Operator" : "Assign Operator"}
             </Button>
           </DialogFooter>

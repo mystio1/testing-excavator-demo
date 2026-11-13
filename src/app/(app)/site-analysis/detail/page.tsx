@@ -153,7 +153,9 @@ export default function SiteDetailPage() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {/* The assistant reads its answer out of these figures, so the block
+            that holds them is what it waits for and what it quotes. */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-agent-id="site-summary">
           <SummaryCard icon={Truck} label="Machines" value={summary.machines} />
           <SummaryCard icon={Clock} label="Total Working Hours" value={formatHours(summary.hours)} accent="info" />
           <SummaryCard icon={Shovel} label="Bucket Hours" value={formatHours(summary.bucketHours)} accent="info" />

@@ -104,7 +104,10 @@ export default function PendingApprovalsPage() {
   return (
     <div>
       <PageHeader title="Pending Approvals" />
-      <div className="flex flex-col gap-3 px-4 pb-6 md:px-8">
+      {/* Annotated on the container that holds both the cards and the empty
+          state: "nothing is waiting" is a real answer to "kya approve karna
+          hai", and the assistant should be able to read it. */}
+      <div className="flex flex-col gap-3 px-4 pb-6 md:px-8" data-agent-id="approvals-list">
         {isEmpty && (
           <div
             key="empty"

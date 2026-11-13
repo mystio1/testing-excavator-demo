@@ -28,8 +28,14 @@ const count = (text, re) => (text.match(re) ?? []).length;
 
 const rows = buildInventory(".");
 const mutating = rows.filter((r) => r.mutating && r.principal !== "NONE");
-const testFiles = walk("tests", (p) => p.endsWith(".test.ts"));
-const dbBacked = testFiles.filter((f) => /createTenant|@\/lib\/db/.test(read(f)));
+// .test.tsx is the component-level suite (the agent driving real dialogs) and
+// .spec.ts is Playwright. Counting only .test.ts quietly understated the suite
+// the moment those were added, which is the kind of drift this file exists to
+// make visible rather than cause.
+const testFiles = walk("tests", (p) => /\.(test\.tsx?|spec\.ts)$/.test(p));
+// Playwright reaches the database through `pg` rather than Prisma, so it has to
+// be recognised too or the DB-backed count is wrong in the other direction.
+const dbBacked = testFiles.filter((f) => /createTenant|@\/lib\/db|from "pg"|createYard/.test(read(f)));
 const testCases = testFiles.reduce((n, f) => n + count(read(f), /^\s*(?:it|test)(?:\.each\([^)]*\))?\(/gm), 0);
 
 const matrixSrc = fs.existsSync("tests/security/cross-tenant-matrix.test.ts") ? read("tests/security/cross-tenant-matrix.test.ts") : "";

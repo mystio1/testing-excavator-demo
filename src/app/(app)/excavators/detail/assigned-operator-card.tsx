@@ -20,7 +20,9 @@ export function AssignedOperatorCard({
   const operators = data?.operators ?? [];
 
   return (
-    <Card>
+    // Shows who the machine is paired with — the assistant reads this to
+    // confirm an assignment actually took.
+    <Card data-agent-id="current-operator">
       <CardContent className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary-text">

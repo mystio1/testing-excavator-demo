@@ -126,7 +126,19 @@ describe("authentication", () => {
     const res = await layoutRoute(get("/layout"));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(Object.keys(body).sort()).toEqual(["alerts", "businessName", "frozen", "hasPin", "ownerName"]);
+    // Pinned on purpose: installed APKs keep an older UI for months, so a key
+    // disappearing from here breaks clients that are still asking for it.
+    // Adding one is additive and safe (see docs/api-conventions.md §10) —
+    // assistantEnabled is the per-business switch the shell reads to decide
+    // whether to mount the assistant panel at all.
+    expect(Object.keys(body).sort()).toEqual([
+      "alerts",
+      "assistantEnabled",
+      "businessName",
+      "frozen",
+      "hasPin",
+      "ownerName",
+    ]);
     expect(body.frozen).toBe(false);
   });
 });

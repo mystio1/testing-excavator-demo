@@ -39,10 +39,17 @@ export function withApi<C = unknown>(
 
     return runWithContext({ requestId, route: pathname, operation }, async () => {
       let response: Response;
+      // A client that hung up is not a failure, and is kept out of the error
+      // rate below. Decided here, before toErrorResponse, because that function
+      // reads ECONNRESET as a database outage.
+      let clientGone = false;
       try {
         response = await handler(req, ctx);
       } catch (error) {
-        response = toErrorResponse(error);
+        clientGone = isClientDisconnect(error);
+        // 499, borrowed from nginx: the client closed the request. Nothing is
+        // delivered either way; the status exists only to keep the log honest.
+        response = clientGone ? new Response(null, { status: 499 }) : toErrorResponse(error);
       }
       try {
         response.headers.set("x-request-id", requestId);
@@ -50,12 +57,42 @@ export function withApi<C = unknown>(
         // immutable headers (e.g. a redirect Response) — the id is still in the logs
       }
       const durationMs = Date.now() - started;
-      const fields = { method: req.method, status: response.status, durationMs };
+      const fields = {
+        method: req.method,
+        status: response.status,
+        durationMs,
+        ...(clientGone ? { clientDisconnected: true } : {}),
+      };
       if (response.status >= 500) logger.error("request failed", undefined, fields);
       else logger.info("request", fields);
       return response;
     });
   };
+}
+
+/**
+ * True when the CLIENT went away mid-request: the phone lost signal, the owner
+ * navigated, the tab closed. Node rejects the pending request with `aborted`
+ * and code ECONNRESET from its own abortIncoming(), which reaches a route
+ * handler looking exactly like a server fault.
+ *
+ * It is not one. Nothing is broken, nobody is listening, and no response can be
+ * delivered whatever status is chosen. This matters more here than in most
+ * apps: the owner uses this on a phone in a yard, so a dropped connection is an
+ * ordinary event, and counting each one as a 500 makes the error rate a measure
+ * of signal strength rather than of correctness. It was found by reading the
+ * dev-server log during a browser run, where three of them were sitting among
+ * 27 passing tests.
+ *
+ * Deliberately narrow. It matches Node's exact abort signature and nothing
+ * else — in particular not a bare AbortError, because the Groq calls abort
+ * themselves on a timeout and a server-side timeout must stay a server error.
+ */
+export function isClientDisconnect(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as { code?: unknown }).code;
+  if (code !== "ECONNRESET" && code !== "ECONNABORTED") return false;
+  return /^(request )?aborted$/i.test(error.message.trim());
 }
 
 /** Prisma codes that mean "could not talk to the database" (nothing was committed). */

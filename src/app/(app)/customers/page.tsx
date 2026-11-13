@@ -91,7 +91,7 @@ export default function CustomersPage() {
         }
       />
 
-      <div className="flex flex-col gap-4 px-4 pb-6 md:px-8">
+      <div data-agent-id="customer-list" className="flex flex-col gap-4 px-4 pb-6 md:px-8">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
           <SummaryCard icon={Users} label="Total Customers" value={summary.totalCustomers} />
           <SummaryCard icon={UserX} label="With Pending Dues" value={summary.withPendingDues} accent="danger" />

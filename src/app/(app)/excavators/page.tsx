@@ -37,7 +37,13 @@ export default function ExcavatorsPage() {
         }
       />
 
-      <div className="flex flex-col gap-4 px-4 pb-6 md:px-8">
+      {/* The assistant's handle wraps BOTH the list and the empty state. Inside
+          the list alone it vanished for a business with no machines, so the
+          assistant answered "I couldn't confirm" for a page that was correct
+          and simply empty — "you have no machines yet" is a real answer to
+          "show me my machines". Found by the browser pass on an empty
+          business; site-list had the same shape. */}
+      <div className="flex flex-col gap-4 px-4 pb-6 md:px-8" data-agent-id="machine-list">
         {excavators.length === 0 ? (
           <EmptyState
             icon={Truck}

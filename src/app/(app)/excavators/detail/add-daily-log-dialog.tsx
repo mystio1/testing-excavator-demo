@@ -61,7 +61,10 @@ export function AddDailyLogDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="lg" variant="secondary" className="h-12 flex-1 text-base" />}>
+      <DialogTrigger
+        data-agent-id="add-reading-trigger"
+        render={<Button size="lg" variant="secondary" className="h-12 flex-1 text-base" />}
+      >
         <Clock className="size-5" />
         Add Today&rsquo;s Work
       </DialogTrigger>
@@ -74,7 +77,7 @@ export function AddDailyLogDialog({
             <Label htmlFor="date" className="text-base">
               Date
             </Label>
-            <Input id="date" name="date" type="date" defaultValue={today} required className="h-12 text-base" />
+            <Input id="date" data-agent-id="date" name="date" type="date" defaultValue={today} required className="h-12 text-base" />
           </div>
 
           <div className="flex gap-2 rounded-lg bg-muted p-1">
@@ -122,7 +125,7 @@ export function AddDailyLogDialog({
                 <Label htmlFor="endHourMeter" className="text-base">
                   End Meter
                 </Label>
-                <Input id="endHourMeter" name="endHourMeter" type="number" step="0.1" min="0" className="h-12 text-base" />
+                <Input id="endHourMeter" data-agent-id="endHourMeter" name="endHourMeter" type="number" step="0.1" min="0" className="h-12 text-base" />
               </div>
             </div>
           ) : (
@@ -176,7 +179,7 @@ export function AddDailyLogDialog({
             <Label htmlFor="dieselLiters" className="text-base">
               Diesel Taken (L) (Optional)
             </Label>
-            <Input id="dieselLiters" name="dieselLiters" type="number" step="0.1" min="0" className="h-12 text-base" />
+            <Input id="dieselLiters" data-agent-id="dieselLiters" name="dieselLiters" type="number" step="0.1" min="0" className="h-12 text-base" />
           </div>
 
           <div className="flex flex-col gap-2">
@@ -189,7 +192,7 @@ export function AddDailyLogDialog({
           {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
           <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-            <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
+            <Button type="submit" data-agent-id="add-reading-submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
               {pending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>

@@ -73,6 +73,7 @@ export function StopWorkDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
+        data-agent-id="stop-work-trigger"
         render={
           <Button
             size="lg"
@@ -95,7 +96,7 @@ export function StopWorkDialog({
             </Label>
             <Input
               key={startDateValue}
-              id="endDate"
+              id="endDate" data-agent-id="stop-endDate"
               name="endDate"
               type="date"
               defaultValue={startDateValue}
@@ -113,7 +114,7 @@ export function StopWorkDialog({
               Final Hour Meter
             </Label>
             <Input
-              id="endHourMeter"
+              id="endHourMeter" data-agent-id="stop-endHourMeter"
               name="endHourMeter"
               type="number"
               step="0.1"
@@ -195,7 +196,7 @@ export function StopWorkDialog({
 
           {!confirmSkipRemaining && (
             <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-              <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
+              <Button type="submit" data-agent-id="stop-work-submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
                 {pending ? "Stopping..." : "Confirm Stop Work"}
               </Button>
             </DialogFooter>

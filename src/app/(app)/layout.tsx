@@ -14,9 +14,20 @@ import { Sidebar } from "@/components/shell/sidebar";
 import { BottomNav } from "@/components/shell/bottom-nav";
 import { MobileTopBar } from "@/components/shell/mobile-top-bar";
 import { DesktopTopHeader } from "@/components/shell/desktop-top-header";
+import { AssistantPanel } from "@/components/agent/assistant-panel";
 
 type Alert = { level: "warning" | "danger"; message: string; href: string };
-type LayoutData = { businessName: string; ownerName: string; alerts: Alert[]; frozen: boolean; hasPin: boolean };
+type LayoutData = {
+  businessName: string;
+  ownerName: string;
+  alerts: Alert[];
+  frozen: boolean;
+  hasPin: boolean;
+  /** Per-business switch. Absent on an older cached response, which is treated
+   * as off rather than on: not offering the assistant is recoverable, offering
+   * one the server will refuse is just a button that fails. */
+  assistantEnabled?: boolean;
+};
 
 function FrozenNotice() {
   const { logout, pending } = useLogout();
@@ -119,6 +130,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </main>
         <BottomNav />
       </div>
+      {/* Inside the authenticated shell on purpose: the assistant drives this
+          page as the owner, so it exists only where the owner is signed in —
+          and only for a business it is switched on for. The routes refuse
+          independently; this just avoids offering a button that would fail. */}
+      {data.assistantEnabled && <AssistantPanel />}
     </div>
   );
 }

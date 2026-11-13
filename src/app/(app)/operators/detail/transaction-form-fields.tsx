@@ -37,7 +37,7 @@ export function TransactionFormFields({
         </Label>
         {!addingCustom ? (
           <>
-            <NativeSelect id="categoryId" name="categoryId" defaultValue={defaultCategoryId} className="h-12 text-base">
+            <NativeSelect id="categoryId" data-agent-id="categoryId" name="categoryId" defaultValue={defaultCategoryId} className="h-12 text-base">
               <option value="" disabled>
                 Select category
               </option>
@@ -72,7 +72,7 @@ export function TransactionFormFields({
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="amount" className="text-base">Amount</Label>
-          <Input id="amount"
+          <Input id="amount" data-agent-id="amount"
             name="amount"
             type="number"
             min="0.01"
@@ -84,7 +84,7 @@ export function TransactionFormFields({
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="date" className="text-base">Date</Label>
-          <Input id="date" name="date" type="date" defaultValue={defaultDate} required className="h-12 text-base" />
+          <Input id="date" data-agent-id="date" name="date" type="date" defaultValue={defaultDate} required className="h-12 text-base" />
         </div>
       </div>
 

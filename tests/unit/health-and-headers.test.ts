@@ -113,7 +113,14 @@ describe("next.config.ts response headers", () => {
     expect(value(pages, "X-Content-Type-Options")).toBe("nosniff");
     expect(value(pages, "Referrer-Policy")).toBe("strict-origin-when-cross-origin");
     expect(value(pages, "Cross-Origin-Opener-Policy")).toBe("same-origin");
-    expect(value(pages, "Permissions-Policy")).toContain("camera=()");
+    const permissions = value(pages, "Permissions-Policy")!;
+    expect(permissions).toContain("camera=()");
+    expect(permissions).toContain("geolocation=()");
+    // The assistant's voice input needs the microphone on this origin. An empty
+    // allowlist makes the browser refuse without ever prompting, so voice could
+    // not work at all; (self) keeps it away from third-party frames.
+    expect(permissions).toContain("microphone=(self)");
+    expect(permissions).not.toContain("microphone=*");
   });
 
   it("the API is never cacheable by a shared cache", async () => {

@@ -1,8 +1,10 @@
 "use client";
 
+import { useMemo } from "react";
+
 import { useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, newIdempotencyKey } from "@/lib/api-client";
 import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,10 +14,14 @@ import { Card, CardContent } from "@/components/ui/card";
 export function AddCustomerForm() {
   const router = useRouter();
   const { mutate } = useSWRConfig();
+  // One key per form, so a retry of THIS submission replays the first result
+  // rather than adding a second customer with the same name.
+  const idempotencyKey = useMemo(() => newIdempotencyKey(), []);
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     const { customer } = await apiFetch<{ customer: { id: string } }>("/api/customers", {
       method: "POST",
       body: JSON.stringify(body),
+      idempotencyKey,
     });
     await mutate((key) => typeof key === "string" && key.startsWith("/api/customers"));
     router.push(`/customers/detail?id=${customer.id}`);
@@ -41,13 +47,13 @@ export function AddCustomerForm() {
             <Label htmlFor="name" className="text-base">
               Customer Name
             </Label>
-            <Input id="name" name="name" required className="h-12 text-base" autoFocus />
+            <Input id="name" name="name" required className="h-12 text-base" autoFocus data-agent-id="new-customer-name" />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="mobile" className="text-base">
               Mobile Number
             </Label>
-            <Input id="mobile" name="mobile" type="tel" required className="h-12 text-base" />
+            <Input id="mobile" name="mobile" type="tel" required className="h-12 text-base" data-agent-id="new-customer-mobile" />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="companyName" className="text-base">
@@ -68,7 +74,7 @@ export function AddCustomerForm() {
             <Input id="gstNumber" name="gstNumber" className="h-12 text-base" />
           </div>
           {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
-          <Button type="submit" size="lg" className="h-12 text-base" disabled={pending}>
+          <Button type="submit" size="lg" className="h-12 text-base" disabled={pending} data-agent-id="new-customer-submit">
             {pending ? "Saving..." : "Save Customer"}
           </Button>
         </form>

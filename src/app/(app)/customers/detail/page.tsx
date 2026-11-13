@@ -175,7 +175,7 @@ export default function CustomerDetailPage() {
           </div>
         }
       />
-      <div className="flex flex-col gap-4 px-4 pb-6 md:px-8">
+      <div className="flex flex-col gap-4 px-4 pb-6 md:px-8" data-agent-id="customer-detail">
         <Card>
           <CardContent className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex flex-col gap-1 text-sm">

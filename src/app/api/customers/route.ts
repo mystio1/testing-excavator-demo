@@ -1,4 +1,5 @@
 import { requireBusinessApi } from "@/lib/api-auth";
+import { runIdempotent } from "@/lib/idempotency";
 import { parsePagination } from "@/lib/pagination";
 import { createCustomer, listCustomers } from "@/lib/services/customers";
 import { addCustomerSchema, customerListQuerySchema } from "@/lib/validation/customer";
@@ -22,11 +23,34 @@ export const GET = withApi("customers.list", async (req) => {
   return json(await listCustomers(auth.session.businessId, q, tripDate, page));
 });
 
+/**
+ * Honors an `Idempotency-Key` so a retry after a lost response replays the
+ * first result instead of creating a second customer.
+ *
+ * It is the only create the assistant drives with no natural guard of its own:
+ * starting a job takes a row lock and refuses a second ACTIVE one, a day's
+ * reading refuses a second entry for the same date, and leave refuses
+ * overlapping dates — so a repeated instruction is already rejected there. A
+ * customer has no such key (two people can genuinely share a phone number), so
+ * the key has to come from the submission itself.
+ */
 export const POST = withApi("customers.create", async (req) => {
   const auth = await requireBusinessApi();
   if (auth.error) return auth.error;
+  const { session, actor } = auth;
 
   const input = await parseBody(req, addCustomerSchema);
-  const customer = await createCustomer(auth.session.businessId, auth.actor, input);
-  return json({ customer });
+  return runIdempotent(
+    { req, businessId: session.businessId, actorId: actor.id, operation: "customer.create", payload: input },
+    async (tx) => {
+      const customer = await createCustomer(session.businessId, actor, input, { tx });
+      return {
+        ok: true,
+        status: 200,
+        body: { customer },
+        resourceType: "Customer",
+        resourceId: customer.id,
+      };
+    },
+  );
 });

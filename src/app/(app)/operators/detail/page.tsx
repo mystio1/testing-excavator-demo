@@ -136,9 +136,11 @@ export default function OperatorDetailPage() {
       <div className="flex flex-col gap-4 px-4 pb-6 md:px-8">
         <Tabs defaultValue={tab}>
           <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="overview" data-agent-id="tab-overview">
+              Overview
+            </TabsTrigger>
             <TabsTrigger value="transactions">Money</TabsTrigger>
-            <TabsTrigger value="sessions">Sessions</TabsTrigger>
+            <TabsTrigger value="sessions" data-agent-id="tab-sessions">Sessions</TabsTrigger>
             <TabsTrigger value="salary">Salary</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
@@ -157,7 +159,9 @@ export default function OperatorDetailPage() {
 
             <SessionSummaryCard operatorId={operator.id} />
 
-            <Card>
+            {/* What the assistant reads aloud when asked about someone's pay,
+                and what proves the salary screen actually loaded. */}
+            <Card data-agent-id="salary-summary">
               <CardContent className="flex flex-col gap-2 text-sm">
                 <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                   Since Joining ({formatDateRange(lifetimeSalary.joiningDate, lifetimeSalary.asOf)})
@@ -199,7 +203,11 @@ export default function OperatorDetailPage() {
             <OperatorPinCard operatorId={operator.id} canLogin={operator.canLogin} hasPinSet={operator.hasPin} />
           </TabsContent>
 
-          <TabsContent value="transactions" className="flex flex-col gap-4 pt-4">
+          <TabsContent
+            value="transactions"
+            data-agent-id="transactions-list"
+            className="flex flex-col gap-4 pt-4"
+          >
             <AddTransactionDialog operatorId={operator.id} categories={categories} suggestedAmount={suggestedAmount} />
             {transactions.length === 0 && (
               <Card>

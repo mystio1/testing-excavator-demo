@@ -12,10 +12,22 @@ export const GET = withApi("layout.get", async () => {
   if (auth.error) return auth.error;
   const { businessName, ownerName, businessId, businessFrozen, userId } = auth.session;
 
-  const [alerts, user] = await Promise.all([
+  const [alerts, user, business] = await Promise.all([
     businessFrozen ? Promise.resolve([]) : getAlerts(businessId),
     db.user.findFirst({ where: { id: userId, businessId }, select: { appPinHash: true } }),
+    // The assistant's switch travels with the shell the panel is mounted in,
+    // so a business it is turned off for never sees the button at all. The
+    // routes refuse independently — this is about not offering something that
+    // would then fail.
+    db.business.findFirst({ where: { id: businessId }, select: { assistantEnabled: true } }),
   ]);
 
-  return json({ businessName, ownerName, alerts, frozen: businessFrozen, hasPin: !!user?.appPinHash });
+  return json({
+    businessName,
+    ownerName,
+    alerts,
+    frozen: businessFrozen,
+    hasPin: !!user?.appPinHash,
+    assistantEnabled: business?.assistantEnabled ?? false,
+  });
 });

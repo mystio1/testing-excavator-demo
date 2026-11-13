@@ -8,18 +8,18 @@ database was read, and no CI result was consulted. A number here says a control 
 
 | Control | Measure | Value |
 |---|---|---|
-| Authentication guard on every API route | route/method pairs guarded vs total (the rest are the justified public list) | 93/107 (87%) |
-| Idempotent creates | mutating authenticated routes using an Idempotency-Key | 5/63 (8%) |
-| Optimistic concurrency | mutating authenticated routes accepting `expectedVersion` | 20/63 (32%) |
-| Cross-tenant negative tests | id-addressed handler cases in the isolation matrix | 45 |
+| Authentication guard on every API route | route/method pairs guarded vs total (the rest are the justified public list) | 115/129 (89%) |
+| Idempotent creates | mutating authenticated routes using an Idempotency-Key | 8/74 (11%) |
+| Optimistic concurrency | mutating authenticated routes accepting `expectedVersion` | 24/74 (32%) |
+| Cross-tenant negative tests | id-addressed handler cases in the isolation matrix | 58 |
 | Cross-tenant feed checks | list/search/dashboard feeds asserted to leak nothing | 14 |
-| Audit trail coverage | `recordAudit` call sites / distinct audit actions | 62 / 52 |
+| Audit trail coverage | `recordAudit` call sites / distinct audit actions | 77 / 72 |
 | Data integrity rules | SQL checks run by `npm run audit:integrity` (data rules + database controls; plus the generic orphan scan) | 27 + 1 |
-| Test files / of which DB-backed | static count | 77 / 55 |
-| Test cases | lexical count of it()/test() | 890 |
+| Test files / of which DB-backed | static count | 120 / 72 |
+| Test cases | lexical count of it()/test() | 1399 |
 | CI | workflows / steps in the main CI workflow | 4 / 17 |
-| Schema | models / migrations | 26 / 12 |
-| Documentation | markdown docs / decision records | 11 / 7 |
+| Schema | models / migrations | 33 / 21 |
+| Documentation | markdown docs / decision records | 12 / 7 |
 
 Reading the percentages: idempotency keys are applied deliberately to the routes that CREATE money records
 (bills, payments) and `expectedVersion` to records that can be edited concurrently; neither is meant to cover

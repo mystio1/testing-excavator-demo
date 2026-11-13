@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useSWRConfig } from "swr";
 import { Play, Plus } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
@@ -46,7 +46,24 @@ export function StartWorkDialog({
   const today = todayLocal();
   const [open, setOpen] = useState(false);
 
-  const [customers, setCustomers] = useState<CustomerOption[]>(initialCustomers);
+  /**
+   * Derived, not copied.
+   *
+   * `useState(initialCustomers)` captured the prop on the first render only,
+   * and this list arrives from SWR a moment after the page does. Open the
+   * dialog before that fetch lands and it was stuck on an empty list for good:
+   * "Add a customer below to get started" with Save disabled, for an owner who
+   * has customers. Closing and reopening fixed it, which is why it looked like
+   * a flicker rather than a bug.
+   *
+   * `added` holds only what was created inline here, so the newly added
+   * customer is selectable before the refetch includes it.
+   */
+  const [added, setAdded] = useState<CustomerOption[]>([]);
+  const customers = useMemo(() => {
+    const known = new Set(initialCustomers.map((c) => c.id));
+    return [...initialCustomers, ...added.filter((c) => !known.has(c.id))];
+  }, [initialCustomers, added]);
   const [siteName, setSiteName] = useState(defaultSiteName ?? "");
 
   // A site already belongs to a customer, so asking for the customer again is
@@ -87,7 +104,10 @@ export function StartWorkDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger render={<Button size="lg" className="h-12 flex-1 text-base" />}>
+      <DialogTrigger
+        data-agent-id="start-work-trigger"
+        render={<Button size="lg" className="h-12 flex-1 text-base" />}
+      >
         <Play className="size-5" />
         Start New Work
       </DialogTrigger>
@@ -116,6 +136,7 @@ export function StartWorkDialog({
                 ) : (
                   <NativeSelect
                     id="customerId"
+                  data-agent-id="customerId"
                     name="customerId"
                     required
                     value={customerId}
@@ -145,6 +166,7 @@ export function StartWorkDialog({
                 </Label>
                 <Input
                   id="siteName"
+                  data-agent-id="siteName"
                   name="siteName"
                   placeholder="e.g. Wagholi"
                   value={siteName}
@@ -175,7 +197,7 @@ export function StartWorkDialog({
                 <Label htmlFor="startDate" className="text-base">
                   Start Date
                 </Label>
-                <Input id="startDate" name="startDate" type="date" defaultValue={today} required className="h-12 text-base" />
+                <Input id="startDate" data-agent-id="startDate" name="startDate" type="date" defaultValue={today} required className="h-12 text-base" />
               </div>
 
               <div className="flex flex-col gap-2">
@@ -184,6 +206,7 @@ export function StartWorkDialog({
                 </Label>
                 <Input
                   id="startHourMeter"
+                  data-agent-id="startHourMeter"
                   name="startHourMeter"
                   type="number"
                   step="0.1"
@@ -199,7 +222,7 @@ export function StartWorkDialog({
 
             <AddCustomerInline
               onAdded={(customer) => {
-                setCustomers((prev) => [...prev, customer]);
+                setAdded((prev) => [...prev, customer]);
                 setCustomerOverride(customer.id);
               }}
             />
@@ -210,6 +233,7 @@ export function StartWorkDialog({
               <Button
                 type="submit"
                 form="start-work-form"
+                data-agent-id="start-work-submit"
                 size="lg"
                 className="h-12 w-full text-base"
                 disabled={pending || customers.length === 0}

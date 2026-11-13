@@ -57,7 +57,7 @@ export default function ExcavatorDetailPage() {
           </div>
         }
       />
-      <div className="flex flex-col gap-4 px-4 pb-6 md:px-8">
+      <div data-agent-id="machine-detail" className="flex flex-col gap-4 px-4 pb-6 md:px-8">
         <Card>
           <CardContent className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -104,7 +104,9 @@ export default function ExcavatorDetailPage() {
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="current">Work</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
-            <TabsTrigger value="service">Service</TabsTrigger>
+            <TabsTrigger value="service" data-agent-id="tab-service">
+              Service
+            </TabsTrigger>
             <TabsTrigger value="details">Details</TabsTrigger>
           </TabsList>
 
@@ -123,7 +125,7 @@ export default function ExcavatorDetailPage() {
             <WorkHistoryTab excavatorId={excavator.id} />
           </TabsContent>
 
-          <TabsContent value="service" className="pt-4">
+          <TabsContent value="service" data-agent-id="service-tab" className="pt-4">
             <ServiceTab
               excavatorId={excavator.id}
               currentHourMeter={excavator.currentHourMeter}
