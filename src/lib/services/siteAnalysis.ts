@@ -39,6 +39,19 @@ import { BILL_PAID_FRACTION_SQL, getCustomerBillTotals, type BillTotals } from "
  * Customer-level figures (billed/received/pending across ALL of a customer's bills) come from the
  * same Bill/Payment records through financials.ts and are shown beside, never added to, site figures.
  *
+ * The dashboard's "Total Amount" is kept consistent with this: it adds `unbilledRevenue` from
+ * getSiteTotals() to its own bill totals, so the Pending shown on Site Analysis is part of the
+ * home-screen total rather than missing from it. Bills carry the billed money (including direct
+ * bills, which belong to no work session and so never reach this engine), and the unbilled part is
+ * added exactly once. See getDashboardSummary.
+ *
+ * DIESEL AVERAGE comes in two forms, and both are shown:
+ *   - simple (simpleDieselAverage): diesel taken / hours worked, and the same sum inverted as hours
+ *     per litre. Needs no tank readings, so it is always available.
+ *   - exact (consumptionPerHour / dieselEntryAverage): diesel actually BURNED per hour, which needs
+ *     the litres left in the tank. Null until those are entered — which is why the simple form
+ *     exists rather than the screen showing nothing.
+ *
  * MACHINES WORKING AT A SITE: an Excavator with status WORKING (not archived) whose
  * currentSiteId is the site OR which has an ACTIVE WorkSession at the site. Dashboard
  * "machines working" counts distinct such machines.
@@ -476,6 +489,13 @@ export type SiteTotals = {
   brekarHours: number;
   dieselLiters: number;
   revenue: number;
+  /** The part of `revenue` that is on an invoice. */
+  billedRevenue: number;
+  /** Work done but not yet invoiced, valued at the site rates. Part of
+   * `revenue` and of `pending`: the dashboard's "Total Amount" adds exactly
+   * this to its bill totals so the home screen counts the same money Site
+   * Analysis does (see getDashboardSummary). */
+  unbilledRevenue: number;
   received: number;
   pending: number;
   /** "all-time" or the range these figures cover. */
@@ -500,6 +520,8 @@ export async function getSiteTotals(businessId: string): Promise<SiteTotals> {
     brekarHours: totals.breakerHours,
     dieselLiters: totals.diesel,
     revenue: totals.revenue,
+    billedRevenue: totals.billedRevenue,
+    unbilledRevenue: totals.unbilledRevenue,
     received: totals.received,
     pending: totals.pending,
     period: "all-time",
@@ -575,6 +597,8 @@ export async function getSiteAnalysis(businessId: string, siteId: string, f: Sit
       customerId: site.customerId,
       customerName: site.type === "SELF_SITE" ? SELF_SITE_LABEL : (site.customer?.name ?? "—"),
       customerCompany: site.customer?.companyName ?? null,
+      /** So the shared PDF report can open the right WhatsApp chat. */
+      customerMobile: site.customer?.mobile ?? null,
       bucketRate: site.bucketRate === null ? null : dec(site.bucketRate).toNumber(),
       breakerRate: site.breakerRate === null ? null : dec(site.breakerRate).toNumber(),
     },
@@ -596,7 +620,12 @@ export async function getSiteAnalysis(businessId: string, siteId: string, f: Sit
     diesel: {
       total: totals.diesel,
       avgPerDay: totals.avgDieselPerDay,
+      /** The exact rate: diesel actually BURNED per working hour, which needs
+       * a closing tank reading. Null when none has been entered. */
       avgPerHour: consumptionPerHour(machines, closings, f),
+      /** The plain-arithmetic rate, always available: diesel taken ÷ hours
+       * worked. See simpleDieselAverage. */
+      simple: simpleDieselAverage(totals.hours, totals.diesel),
       consumption: dieselConsumption,
     },
     rateHistory: rateHistory.map((h) => ({
@@ -692,6 +721,36 @@ export function dieselEntryAverage(e: {
   if (consumed < 0) return { average: null, consumed, flagged: true };
   if (e.hours <= 0) return { average: null, consumed, flagged: false };
   return { average: num(consumed / e.hours), consumed, flagged: false };
+}
+
+/**
+ * The simple diesel average: what was taken, over the hours worked. No tank
+ * readings involved, so it can always be shown.
+ *
+ * The exact rate below (`consumptionPerHour`) measures diesel actually burned,
+ * which needs the litres left in the tank; until somebody enters those it
+ * returns null and the screen had nothing to show at all. That is the wrong
+ * answer to "what is this machine averaging": the owner has the two numbers
+ * that matter — hours run and diesel put in — and dividing them is the figure
+ * they have always worked with by hand.
+ *
+ * Both forms are returned because both get asked for:
+ *   litresPerHour = diesel ÷ hours  (how the rate is normally quoted)
+ *   hoursPerLitre = hours ÷ diesel  (how long a litre lasts)
+ *
+ * It is an approximation, deliberately: diesel filled on a day is not
+ * necessarily diesel burned on that day, so over a short window a big fill
+ * skews it. Over a month it settles. The UI labels it as the simple figure and
+ * says what to enter to get the exact one.
+ */
+export function simpleDieselAverage(
+  hours: number,
+  diesel: number,
+): { litresPerHour: number | null; hoursPerLitre: number | null } {
+  return {
+    litresPerHour: hours > 0 && diesel > 0 ? num(diesel / hours) : null,
+    hoursPerLitre: hours > 0 && diesel > 0 ? num(hours / diesel) : null,
+  };
 }
 
 /** Litres actually burned per working hour across the scope — NOT litres filled

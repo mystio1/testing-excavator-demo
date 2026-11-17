@@ -23,6 +23,8 @@ const startWorkFields = {
   customer: "cus_1",
   site: "Wakad",
   startHourMeter: 1200,
+  // Compulsory on the form, so a task without it is still collecting details.
+  tool: "Bucket",
 };
 
 describe("the registry is the allowlist", () => {
@@ -147,6 +149,9 @@ describe("missing details are asked for, not invented", () => {
       "customer",
       "site",
       "startHourMeter",
+      // Asked last, after the readings, but asked: the form will not save a
+      // job without a tool, so the assistant must not guess one either.
+      "tool",
     ]);
     // startDate is optional — the form defaults it.
     expect(missingFields(workflow, startWorkFields)).toHaveLength(0);

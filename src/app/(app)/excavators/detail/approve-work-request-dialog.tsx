@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useSWRConfig } from "swr";
 import { Check } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
@@ -63,8 +63,6 @@ export function ApproveWorkRequestDialog({
   const [addingCustomer, setAddingCustomer] = useState(customers.length === 0);
   const [toolError, setToolError] = useState<string | null>(null);
   const [currentSiteName, setCurrentSiteName] = useState(siteName ?? "");
-  const [confirmSkipRemaining, setConfirmSkipRemaining] = useState(false);
-  const formRef = useRef<HTMLFormElement>(null);
   // Show site-change prompt when the admin edits the site to something different
   // from the operator's last job — offer to keep the previous customer.
   const siteChanged =
@@ -81,17 +79,15 @@ export function ApproveWorkRequestDialog({
   const startDateValue = new Date(startDate).toISOString().slice(0, 10);
   const endDateValue = endDate ? new Date(endDate).toISOString().slice(0, 10) : startDateValue;
 
-  async function doSubmit(fd: FormData, skipRemainingCheck = false) {
+  /** Approves on the first press. The litres left in the tank are asked for
+   * once, on the form; a blank one is accepted without a second question. */
+  async function doSubmit(fd: FormData) {
     if (!fd.get("attachment")) {
       setToolError(TOOL_REQUIRED_MESSAGE);
       return;
     }
     const diesel = fd.get("dieselLiters");
     const remaining = fd.get("remainingDieselLiters");
-    if (!skipRemainingCheck && diesel && !remaining) {
-      setConfirmSkipRemaining(true);
-      return;
-    }
     const ok = await run({
       customerId: fd.get("customerId") || undefined,
       newCustomerName: fd.get("newCustomerName") || undefined,
@@ -121,7 +117,6 @@ export function ApproveWorkRequestDialog({
 
   function handleOpenChange(v: boolean) {
     setOpen(v);
-    if (!v) setConfirmSkipRemaining(false);
   }
 
   return (
@@ -134,7 +129,7 @@ export function ApproveWorkRequestDialog({
         <DialogHeader>
           <DialogTitle>Approve Job</DialogTitle>
         </DialogHeader>
-        <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-4">
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="rounded-lg border border-dashed p-3 text-sm">
             <span className="text-muted-foreground">Operator: </span>
             <span className="font-semibold">{operatorName}</span>
@@ -294,7 +289,6 @@ export function ApproveWorkRequestDialog({
                 min="0"
                 defaultValue={dieselLiters ?? undefined}
                 className="h-12 text-base"
-                onChange={() => setConfirmSkipRemaining(false)}
               />
             </div>
             <div className="flex flex-col gap-2">
@@ -309,38 +303,13 @@ export function ApproveWorkRequestDialog({
                 min="0"
                 placeholder="e.g. 70"
                 className="h-12 text-base"
-                onChange={() => setConfirmSkipRemaining(false)}
               />
             </div>
           </div>
           <p className="text-xs text-muted-foreground -mt-2">
-            Litres still in the tank at the end of the work — used to calculate consumption rate &amp; predict runtime.
+            Litres still in the tank at the end of the work. Leave blank if it wasn&rsquo;t recorded — it only
+            makes the consumption rate exact.
           </p>
-
-          {confirmSkipRemaining && (
-            <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-3 text-sm">
-              <p className="font-semibold text-amber-700 dark:text-amber-300">No remaining diesel entered</p>
-              <p className="mt-1 text-amber-700/80 dark:text-amber-300/80">
-                Without it the consumption rate can&apos;t be calculated. Skip anyway?
-              </p>
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => { if (formRef.current) doSubmit(new FormData(formRef.current), true); }}
-                  className="flex-1 rounded-lg bg-amber-500 py-2 text-sm font-semibold text-white"
-                >
-                  Yes, skip
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmSkipRemaining(false)}
-                  className="flex-1 rounded-lg bg-muted py-2 text-sm font-semibold text-foreground"
-                >
-                  Enter it
-                </button>
-              </div>
-            </div>
-          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">

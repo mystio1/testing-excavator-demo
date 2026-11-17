@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useSWRConfig } from "swr";
 import { Square } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
@@ -37,19 +37,15 @@ export function StopWorkDialog({
   // Work dates are stored as the UTC midnight of the chosen day.
   const startDateValue = new Date(startDate).toISOString().slice(0, 10);
   const [open, setOpen] = useState(false);
-  const [confirmSkipRemaining, setConfirmSkipRemaining] = useState(false);
-  const formRef = useRef<HTMLFormElement>(null);
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch(`/api/excavators/${excavatorId}/stop-work`, { method: "POST", body: JSON.stringify(body) });
   });
 
-  async function doSubmit(fd: FormData, skipRemainingCheck = false) {
+  /** Saves on the first press. Diesel left in the tank is asked for once, on
+   * the form; a blank one is accepted without a second question. */
+  async function doSubmit(fd: FormData) {
     const diesel = fd.get("dieselLiters");
     const remaining = fd.get("remainingDieselLiters");
-    if (!skipRemainingCheck && diesel && !remaining) {
-      setConfirmSkipRemaining(true);
-      return;
-    }
     const ok = await run({
       workSessionId,
       expectedVersion: version,
@@ -67,7 +63,6 @@ export function StopWorkDialog({
 
   function handleOpenChange(v: boolean) {
     setOpen(v);
-    if (!v) setConfirmSkipRemaining(false);
   }
 
   return (
@@ -89,7 +84,7 @@ export function StopWorkDialog({
         <DialogHeader>
           <DialogTitle>Stop Work</DialogTitle>
         </DialogHeader>
-        <form ref={formRef} onSubmit={(e) => { e.preventDefault(); doSubmit(new FormData(e.currentTarget)); }} className="flex flex-col gap-4">
+        <form onSubmit={(e) => { e.preventDefault(); doSubmit(new FormData(e.currentTarget)); }} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="endDate" className="text-base">
               End Date
@@ -137,7 +132,6 @@ export function StopWorkDialog({
                 step="0.1"
                 min="0"
                 className="h-12 text-base"
-                onChange={() => setConfirmSkipRemaining(false)}
               />
             </div>
             <div className="flex flex-col gap-2">
@@ -152,38 +146,13 @@ export function StopWorkDialog({
                 min="0"
                 placeholder="e.g. 70"
                 className="h-12 text-base"
-                onChange={() => setConfirmSkipRemaining(false)}
               />
             </div>
           </div>
           <p className="text-xs text-muted-foreground -mt-2">
-            Litres still in the tank at the end of the work — enables consumption rate &amp; runtime prediction.
+            Litres still in the tank at the end of the work. Leave blank if you don&apos;t have it — it only makes
+            the consumption rate exact.
           </p>
-
-          {confirmSkipRemaining && (
-            <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-3 text-sm">
-              <p className="font-semibold text-amber-700 dark:text-amber-300">No remaining diesel entered</p>
-              <p className="mt-1 text-amber-700/80 dark:text-amber-300/80">
-                Without it the consumption rate can&apos;t be calculated. Skip anyway?
-              </p>
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => { if (formRef.current) doSubmit(new FormData(formRef.current), true); }}
-                  className="flex-1 rounded-lg bg-amber-500 py-2 text-sm font-semibold text-white"
-                >
-                  Yes, skip
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmSkipRemaining(false)}
-                  className="flex-1 rounded-lg bg-muted py-2 text-sm font-semibold text-foreground"
-                >
-                  Enter it
-                </button>
-              </div>
-            </div>
-          )}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="stopWorkNotes" className="text-base">
@@ -194,13 +163,11 @@ export function StopWorkDialog({
 
           {error && <p role="alert" className="text-sm font-medium text-destructive">{error}</p>}
 
-          {!confirmSkipRemaining && (
-            <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-              <Button type="submit" data-agent-id="stop-work-submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
-                {pending ? "Stopping..." : "Confirm Stop Work"}
-              </Button>
-            </DialogFooter>
-          )}
+          <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
+            <Button type="submit" data-agent-id="stop-work-submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
+              {pending ? "Stopping..." : "Confirm Stop Work"}
+            </Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

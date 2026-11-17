@@ -77,7 +77,11 @@ export async function buildScenario(t: TestTenant): Promise<Scenario> {
       db.excavator.create({ data: { businessId: t.businessId, name: m.name, machineNumber: m.number } }),
       db.operator.create({ data: { businessId: t.businessId, name: m.operator, mobile: `98${Math.floor(Math.random() * 1e8)}` } }),
     ]);
-    const total = m.logs.reduce((a, l) => a + l.hours, 0);
+    // Widened before the fold: each machine's `logs` is a different array
+    // literal, so `reduce` on the union resolved to an overload that typed the
+    // accumulator as a LogSpec and made `total` unusable as a number.
+    const logs: readonly LogSpec[] = m.logs;
+    const total = logs.reduce((a, l) => a + l.hours, 0);
     const session = await db.workSession.create({
       data: {
         businessId: t.businessId,

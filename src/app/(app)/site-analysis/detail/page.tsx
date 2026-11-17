@@ -19,6 +19,8 @@ import { formatHours } from "@/lib/utils/hours";
 import { Breadcrumbs, DateRangeFilter, KeyValue, SITE_TYPE_LABEL, SiteStatusBadge, fmtDay, qs } from "../shared";
 import { DailyReadingsTable, DieselEntriesList } from "../readings-tables";
 import { EditSiteDialog, RatesCard } from "../site-forms";
+import { SiteReport } from "./site-report";
+import { ShareSiteReportButton } from "./share-site-report-button";
 import Loading from "../../loading";
 
 type Analysis = Plain<NonNullable<Awaited<ReturnType<typeof getSiteAnalysis>>>>;
@@ -37,6 +39,8 @@ export default function SiteDetailPage() {
 
   const key = id ? `/api/sites/${id}/analysis${qs({ excavatorId, from, to })}` : null;
   const { data, error, mutate } = useSWR<Analysis>(key, swrFetcher, { keepPreviousData: true });
+  // Same SWR key the app shell uses, so this costs no extra request.
+  const { data: layout } = useSWR<{ businessName: string }>("/api/layout", swrFetcher);
 
   const setFilters = (patch: Partial<{ excavatorId: string; from: string; to: string }>) =>
     router.replace(`${pathname}${qs({ id, excavatorId, from, to, ...patch })}`, { scroll: false });
@@ -53,6 +57,7 @@ export default function SiteDetailPage() {
 
   const { site, summary, machines, machineOptions, machinesWorking, workType, diesel, customerFinancials, rateHistory } = data;
   const machineLink = (excId: string) => `/site-analysis/machine${qs({ site: id, id: excId, from, to })}`;
+  const reportPeriod = from || to ? `${from ? fmtDay(from) : "the start"} to ${to ? fmtDay(to) : "today"}` : "All time";
 
   return (
     <div>
@@ -168,6 +173,31 @@ export default function SiteDetailPage() {
         </div>
 
         <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-base font-bold">Share this analysis</p>
+              <p className="text-sm text-muted-foreground">
+                A PDF of everything on this page — site totals, work type, diesel and each machine&rsquo;s
+                performance — for the current machine and date filters.
+              </p>
+            </div>
+            <ShareSiteReportButton
+              siteName={site.name}
+              businessName={layout?.businessName ?? ""}
+              customerMobile={site.customerMobile}
+              period={reportPeriod}
+              totals={{
+                hours: summary.hours,
+                revenue: summary.revenue,
+                received: summary.received,
+                pending: summary.pending,
+                machines: summary.machines,
+              }}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
           <CardContent className="flex flex-col gap-3">
             <p className="text-base font-bold">Work Type Analysis</p>
             <Table>
@@ -219,16 +249,59 @@ export default function SiteDetailPage() {
         <Card>
           <CardContent className="flex flex-col gap-3">
             <p className="text-base font-bold">Diesel Analysis</p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <SummaryCard icon={Droplets} label="Total Diesel" value={`${diesel.total} L`} accent="warning" />
               <SummaryCard icon={CalendarDays} label="Average Diesel / Day" value={`${diesel.avgPerDay} L`} accent="warning" />
+              {/* The simple figure, always shown: diesel taken over hours
+                  worked. It needs no tank readings, so the owner is never
+                  left looking at "N/A" for an average they can work out in
+                  their head. */}
+              <SummaryCard
+                icon={Droplets}
+                label="Simple Average (Diesel ÷ Hours)"
+                value={diesel.simple.litresPerHour === null ? "—" : `${diesel.simple.litresPerHour} L/hr`}
+                exactValue={
+                  diesel.simple.hoursPerLitre === null
+                    ? undefined
+                    : `${diesel.simple.hoursPerLitre} hrs per litre · ${formatHours(summary.hours)} ÷ ${summary.diesel} L`
+                }
+                accent="warning"
+              />
               <SummaryCard
                 icon={Clock}
-                label="Average Diesel / Working Hour"
-                value={diesel.avgPerHour === null ? "N/A" : `${diesel.avgPerHour} L/hr`}
+                label="Exact Average (Diesel Burned)"
+                value={diesel.avgPerHour === null ? "Not yet" : `${diesel.avgPerHour} L/hr`}
                 accent="warning"
               />
             </div>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:max-w-md">
+              <KeyValue
+                label="Hours per litre (simple)"
+                value={diesel.simple.hoursPerLitre === null ? "—" : `${diesel.simple.hoursPerLitre} hrs/L`}
+              />
+            </div>
+            {/* The note the owner asked for: say plainly what the simple figure
+                is and what to enter to get the exact one, instead of showing
+                nothing and explaining nothing. */}
+            <p className="text-xs text-muted-foreground">
+              The <span className="font-semibold">simple average</span> is total diesel taken ÷ total hours worked
+              ({summary.diesel} L ÷ {formatHours(summary.hours)}), shown whether or not the daily entries recorded
+              the diesel left in the tank.{" "}
+              {diesel.avgPerHour === null ? (
+                <>
+                  <span className="font-semibold">
+                    Enter the diesel remaining in the tank now to get the exact reading.
+                  </span>{" "}
+                  The exact average measures diesel actually burned, so it is not affected by a large fill landing
+                  on one day.
+                </>
+              ) : (
+                <>
+                  The <span className="font-semibold">exact average</span> measures diesel actually burned, from the
+                  tank readings on the entries — use it in preference to the simple one.
+                </>
+              )}
+            </p>
             <DieselEntriesList siteId={id} excavatorId={excavatorId || undefined} from={from || undefined} to={to || undefined} />
           </CardContent>
         </Card>
@@ -321,6 +394,22 @@ export default function SiteDetailPage() {
         )}
 
         <DailyReadingsTable siteId={id} excavatorId={excavatorId || undefined} from={from || undefined} to={to || undefined} />
+      </div>
+
+      {/* The report the Share button photographs.
+          Moved off-screen rather than hidden. html2canvas clones the node into
+          its own iframe and copies the computed styles with it, so `display:
+          none`, `visibility: hidden` or `opacity: 0` here would all produce a
+          blank PDF — the node has to be genuinely laid out and genuinely
+          painted, just nowhere the owner can see it. `aria-hidden` and
+          `pointer-events: none` keep it out of the screen reader's way and out
+          of the tab order. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none print-hidden"
+        style={{ position: "fixed", top: 0, left: -20000, width: 820 }}
+      >
+        <SiteReport analysis={data} businessName={layout?.businessName ?? ""} from={from} to={to} />
       </div>
     </div>
   );

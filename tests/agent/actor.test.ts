@@ -76,6 +76,7 @@ describe("the read-only actor kind is an extension point, not dead weight", () =
         question: null,
         confirmedFingerprint: null,
         operationId: null,
+        batch: null,
         updatedAt: new Date(),
       },
       operator,

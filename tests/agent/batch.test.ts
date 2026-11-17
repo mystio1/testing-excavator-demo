@@ -151,6 +151,9 @@ describe("working through them", () => {
       ["site", "Hinjawadi Phase 2"],
       ["customer", "Shree Constructions"],
       ["startHourMeter", 1200],
+      // The tool is compulsory on the form, so the batch has to collect it per
+      // machine like any other required answer.
+      ["tool", "Bucket"],
     ] as const) {
       const reply = await handleMessage({ taskId: id, text: String(value), lang: "hi" }, owner, {
         ask: async () => ({ kind: "action", workflowId: "work.start", fields: { [field]: value } }),

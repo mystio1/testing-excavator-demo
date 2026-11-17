@@ -25,7 +25,7 @@ const always = (response: AgentResponse): AskFn => async () => response;
 const startWork: AgentResponse = {
   kind: "action",
   workflowId: "work.start",
-  fields: { machine: "Komatsu PC200", customer: "cus_1", site: "Wakad", startHourMeter: 1200 },
+  fields: { machine: "Komatsu PC200", customer: "cus_1", site: "Wakad", startHourMeter: 1200, tool: "Bucket" },
 };
 
 const payOperator: AgentResponse = {

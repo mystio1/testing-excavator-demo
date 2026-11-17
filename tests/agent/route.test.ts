@@ -113,7 +113,7 @@ const trailRows = (taskId: string) =>
 const startWork: AgentResponse = {
   kind: "action",
   workflowId: "work.start",
-  fields: { machine: "Test JCB", customer: "cus_1", site: "Wakad", startHourMeter: 1200 },
+  fields: { machine: "Test JCB", customer: "cus_1", site: "Wakad", startHourMeter: 1200, tool: "Bucket" },
 };
 
 describe("POST /api/agent", () => {

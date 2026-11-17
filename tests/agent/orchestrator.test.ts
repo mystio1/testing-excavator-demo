@@ -25,7 +25,7 @@ const always = (response: AgentResponse): AskFn => async () => response;
 const startWorkAction: AgentResponse = {
   kind: "action",
   workflowId: "work.start",
-  fields: { machine: "Komatsu PC200", customer: "cus_1", site: "Wakad", startHourMeter: 1200 },
+  fields: { machine: "Komatsu PC200", customer: "cus_1", site: "Wakad", startHourMeter: 1200, tool: "Bucket" },
 };
 
 const send = (text: string, ask: AskFn, taskId?: string) =>
@@ -218,7 +218,7 @@ describe("a day said in words never reaches a form raw", () => {
   const readingOn = (date: string): AgentResponse => ({
     kind: "action",
     workflowId: "reading.add",
-    fields: { machine: "Komatsu PC200", date, endHourMeter: 1208 },
+    fields: { machine: "Komatsu PC200", date, endHourMeter: 1208, tool: "Bucket" },
   });
 
   it("turns a day it understands into a real date", async () => {

@@ -58,6 +58,7 @@ const approval = (requestId: string, over: Partial<ApproveWorkRequestInput> = {}
   siteName: "Alpha Site",
   startHourMeter: 100,
   endHourMeter: 108.5,
+  attachment: "Bucket",
   ...over,
 });
 

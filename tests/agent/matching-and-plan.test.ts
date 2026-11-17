@@ -79,6 +79,8 @@ describe("planning what the browser may do", () => {
     customer: "cus_1",
     site: "Wakad",
     startHourMeter: 1200,
+    // Compulsory on the form, so a plan without it could never submit.
+    tool: "Bucket",
   };
 
   it("produces the registered steps in order, carrying the collected values", () => {
@@ -93,6 +95,9 @@ describe("planning what the browser may do", () => {
       control: "machine-card",
       query: "Komatsu PC200 (PC200-2)",
     });
+    // The tool is chosen from the picker's buttons (a pickFromList), and it
+    // has to happen before the submit or the form refuses to save.
+    expect(plan.operations).toContainEqual({ action: "pickFromList", control: "attachment", query: "Bucket" });
     expect(plan.operations.at(-1)).toEqual({ action: "submit", control: "start-work-submit" });
     expect(plan.verify).toBe("active-work-card");
     // This dialog has no dedicated cancel button, and the registry says so
@@ -110,6 +115,16 @@ describe("planning what the browser may do", () => {
       ok: false,
       reason: "MISSING_VALUE",
       detail: "site",
+    });
+  });
+
+  it("refuses to start a job without a tool, because the form will not save one", () => {
+    // Not a cosmetic field: Site Analysis prices the job's hours by it, so an
+    // unanswered tool has to stop the plan and be asked for, not be skipped.
+    expect(planWorkflow("work.start", { ...startWork, tool: "" })).toMatchObject({
+      ok: false,
+      reason: "MISSING_VALUE",
+      detail: "tool",
     });
   });
 
@@ -139,10 +154,12 @@ describe("planning what the browser may do", () => {
       date: "2026-10-20",
       endHourMeter: 1208,
       dieselLiters: 40,
+      tool: "Breaker",
     });
     expect(plan.ok).toBe(true);
     if (!plan.ok) throw new Error("expected a plan");
     expect(plan.operations).toContainEqual({ action: "fill", control: "dieselLiters", value: "40" });
+    expect(plan.operations).toContainEqual({ action: "pickFromList", control: "attachment", query: "Breaker" });
     expect(plan.verify).toBe("readings-list");
   });
 });

@@ -552,6 +552,16 @@ before any plan exists.
 | `site.analysis.view` | | |
 | `approvals.view` | | |
 
+Both work-recording capabilities collect the **tool** (Bucket / Brekar /
+Chaining) as a required field, and set it with a `pickFromList` against the
+AttachmentPicker's buttons rather than a `select` — the control is a row of
+buttons, and its `data-agent-label`s are the canonical English values, so
+matching behaves the same whatever language the turn is in. It is required
+because the forms make it compulsory (Site Analysis prices a job's hours by it),
+which means a plan that could not set one would collect everything else and then
+fail at the submit. The assistant therefore asks "which tool?" before starting a
+job or adding a reading, and never guesses one.
+
 ### Deliberately not offered
 
 Registered as `draft`, so `resolve()` will not return them and the model is
@@ -744,6 +754,8 @@ actually running the thing, which is where the last two came from:
 |---|---|---|
 | `work.start` selected the customer, then filling the site **wiped it** — the job was filed against the site's own customer, silently | real forms | the step order is only wrong against the dialog's actual state logic |
 | The start-work dialog copied its customer list into `useState`, freezing it at empty if opened before the fetch landed | real forms | needs the prop to arrive *after* mount, which only a render test does |
+| The same dialog then told an owner with a full customer list that they had **no customers**, because `[]` meant "loading", "failed" and "none" alike — Start Work disabled, and reloading the app the only way out | the owner, reporting it | every test supplies the list; none renders the three states apart, and an array prop cannot express which one it is |
+| Making the tool compulsory **silently broke both work capabilities**: the forms refused to submit and the plans had no step that could set one | the suite, at once | nothing — this is the case for registering fields rather than remembering them: `manifest.test.ts`, the plan tests and `real-forms` all failed together |
 | A question asked mid-plan was rendered **behind the modal overlay** — inert, invisible, unanswerable | Playwright | jsdom has no modal inertness, so the panel looked perfectly reachable |
 | `"kal"` reaching `<input type="date">` as a literal word | unit (dates) | — |
 | `clarify` discarding everything the owner had just said, so they had to repeat a whole sentence | eval | no single-case test asks "did it keep what I told you"; only scoring a corpus showed writes at 58% |

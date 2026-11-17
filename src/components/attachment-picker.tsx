@@ -61,6 +61,17 @@ export function AttachmentPicker({
             key={opt}
             type="button"
             aria-pressed={value === opt}
+            // The assistant chooses a tool with a `pickFromList` step: it
+            // matches the label and clicks the matching button. Annotated
+            // literally (not through a prop) because tests/agent/manifest.test.ts
+            // reads these ids off disk — a computed attribute would make the
+            // registry's promise that this control exists unverifiable.
+            //
+            // The label is the canonical English value rather than the
+            // displayed one, so "breaker" matches the same way whichever
+            // language the portal is in.
+            data-agent-id="attachment"
+            data-agent-label={opt}
             onClick={() => select(opt)}
             className={cn(
               "h-11 rounded-lg border text-sm font-semibold transition-colors",

@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AttachmentPicker } from "@/components/attachment-picker";
+import { WorkTotalHours, workTotalHours } from "@/components/work-total-hours";
+import { TOOL_REQUIRED_MESSAGE } from "@/lib/attachments";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -33,6 +35,19 @@ export function AddDailyLogDialog({
   const [mode, setMode] = useState<"meter" | "time">("meter");
   const today = todayLocal();
   const [open, setOpen] = useState(false);
+  const [toolError, setToolError] = useState<string | null>(null);
+  // Mirrored in state only so the total below the readings can be recomputed
+  // on every keystroke; the form itself is still the source of what is saved.
+  const [readings, setReadings] = useState({
+    startHourMeter: String(currentHourMeter),
+    endHourMeter: "",
+    startTime: "",
+    stopTime: "",
+    breakMinutes: "0",
+  });
+  const totalHours = workTotalHours({ mode, ...readings });
+  const onReading = (field: keyof typeof readings) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setReadings((prev) => ({ ...prev, [field]: e.target.value }));
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch(`/api/excavators/${excavatorId}/daily-logs`, { method: "POST", body: JSON.stringify(body) });
   });
@@ -40,6 +55,13 @@ export function AddDailyLogDialog({
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    // The tool is compulsory on an admin entry too: Site Analysis splits hours
+    // into Bucket / Brekar by this value, and an entry without one lands in
+    // "Other / not specified", where it is counted but cannot be priced.
+    if (!fd.get("attachment")) {
+      setToolError(TOOL_REQUIRED_MESSAGE);
+      return;
+    }
     const ok = await run({
       workSessionId,
       date: fd.get("date"),
@@ -51,7 +73,7 @@ export function AddDailyLogDialog({
       operatorName: fd.get("operatorName") || undefined,
       dieselLiters: fd.get("dieselLiters") || undefined,
       notes: fd.get("notes") || undefined,
-      attachment: fd.get("attachment") || undefined,
+      attachment: fd.get("attachment"),
     });
     if (ok) {
       await mutate(`/api/excavators/${excavatorId}`);
@@ -117,7 +139,8 @@ export function AddDailyLogDialog({
                   type="number"
                   step="0.1"
                   min="0"
-                  defaultValue={currentHourMeter}
+                  value={readings.startHourMeter}
+                  onChange={onReading("startHourMeter")}
                   className="h-12 text-base"
                 />
               </div>
@@ -125,7 +148,17 @@ export function AddDailyLogDialog({
                 <Label htmlFor="endHourMeter" className="text-base">
                   End Meter
                 </Label>
-                <Input id="endHourMeter" data-agent-id="endHourMeter" name="endHourMeter" type="number" step="0.1" min="0" className="h-12 text-base" />
+                <Input
+                  id="endHourMeter"
+                  data-agent-id="endHourMeter"
+                  name="endHourMeter"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={readings.endHourMeter}
+                  onChange={onReading("endHourMeter")}
+                  className="h-12 text-base"
+                />
               </div>
             </div>
           ) : (
@@ -135,13 +168,27 @@ export function AddDailyLogDialog({
                   <Label htmlFor="startTime" className="text-base">
                     Start Time
                   </Label>
-                  <Input id="startTime" name="startTime" type="time" className="h-12 text-base" />
+                  <Input
+                    id="startTime"
+                    name="startTime"
+                    type="time"
+                    value={readings.startTime}
+                    onChange={onReading("startTime")}
+                    className="h-12 text-base"
+                  />
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="stopTime" className="text-base">
                     Stop Time
                   </Label>
-                  <Input id="stopTime" name="stopTime" type="time" className="h-12 text-base" />
+                  <Input
+                    id="stopTime"
+                    name="stopTime"
+                    type="time"
+                    value={readings.stopTime}
+                    onChange={onReading("stopTime")}
+                    className="h-12 text-base"
+                  />
                 </div>
               </div>
               <div className="flex flex-col gap-2">
@@ -154,12 +201,18 @@ export function AddDailyLogDialog({
                   type="number"
                   step="1"
                   min="0"
-                  defaultValue={0}
+                  value={readings.breakMinutes}
+                  onChange={onReading("breakMinutes")}
                   className="h-12 text-base"
                 />
               </div>
             </>
           )}
+
+          {/* Right under the readings: the hours the app worked out from them,
+              so the total is never something the owner has to add up or save
+              the entry to discover. */}
+          <WorkTotalHours hours={totalHours} mode={mode} />
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="operatorName" className="text-base">
@@ -173,7 +226,13 @@ export function AddDailyLogDialog({
             />
           </div>
 
-          <AttachmentPicker name="attachment" label="Attachment / Tool Used (Optional)" />
+          <AttachmentPicker
+            name="attachment"
+            label="Attachment / Tool Used"
+            required
+            error={toolError}
+            onValueChange={() => setToolError(null)}
+          />
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="dieselLiters" className="text-base">

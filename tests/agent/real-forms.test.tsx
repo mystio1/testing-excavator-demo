@@ -94,9 +94,18 @@ afterEach(cleanup);
  * these found was in the ORDER, not in any one step.
  *
  * `outside` names the controls that live on the surrounding page rather than in
- * the dialog under test (a tab, a machine card). Only those are dropped; every
- * operation that touches the dialog runs exactly as planned.
+ * the dialog under test (a tab, the machine list). Only those are dropped;
+ * every operation that touches the dialog runs exactly as planned.
+ *
+ * Note it filters by CONTROL, not by action. It used to drop every
+ * `pickFromList`, which worked only while the one list a work flow picked from
+ * was the machine list out on /excavators. The tool picker inside these
+ * dialogs is a pickFromList too, and dropping it meant the dialog was driven
+ * with no tool chosen — so the form correctly refused to submit and the tests
+ * failed for a reason the app does not have.
  */
+const PAGE_LEVEL_CONTROLS = ["machine-card", "operator-card", "customer-card"];
+
 const planFor = (
   id: string,
   fields: Record<string, string | number>,
@@ -104,9 +113,9 @@ const planFor = (
 ) => {
   const plan = planWorkflow(id, fields);
   if (!plan.ok) throw new Error(`could not plan ${id}: ${plan.reason} ${plan.detail}`);
-  const skip = new Set(outside);
+  const skip = new Set([...PAGE_LEVEL_CONTROLS, ...outside]);
   return plan.operations.filter(
-    (o) => o.action !== "navigate" && o.action !== "pickFromList" && !("control" in o && skip.has(o.control)),
+    (o) => o.action !== "navigate" && !("control" in o && skip.has(o.control)),
   );
 };
 
@@ -130,6 +139,7 @@ describe("starting a job through the real dialog", () => {
         site: "Hinjawadi Phase 2",
         startHourMeter: 1200,
         startDate: "2026-10-23",
+        tool: "Bucket",
       }),
       () => undefined,
       { waitMs: 400 },
@@ -143,6 +153,10 @@ describe("starting a job through the real dialog", () => {
       siteName: "Hinjawadi Phase 2",
       startDate: "2026-10-23",
       startHourMeter: 1200,
+      // The tool is compulsory on the form now, so a plan that did not choose
+      // one would never get past submit — assert it actually arrived rather
+      // than inferring it from the request having been made at all.
+      attachment: "Bucket",
     });
   });
 
@@ -165,12 +179,13 @@ describe("starting a job through the real dialog", () => {
         customer: "Shree Constructions",
         site: "Wagholi",
         startHourMeter: 900,
+        tool: "Bucket",
       }),
       () => undefined,
       { waitMs: 400 },
     );
 
-    expect(sent.body).toMatchObject({ customerId: "cus_1", siteName: "Wagholi" });
+    expect(sent.body).toMatchObject({ customerId: "cus_1", siteName: "Wagholi", attachment: "Bucket" });
   });
 
   it("does not quietly send a blank customer", async () => {
@@ -193,6 +208,7 @@ describe("starting a job through the real dialog", () => {
         customer: "Patil Developers",
         site: "A Brand New Site",
         startHourMeter: 1200,
+        tool: "Breaker",
       }),
       () => undefined,
       { waitMs: 400 },
@@ -216,6 +232,7 @@ describe("starting a job through the real dialog", () => {
         defaultSiteName={null}
         customers={[]}
         sites={[]}
+        customersStatus={{ isLoading: true, error: undefined, retry: () => undefined }}
       />,
     );
 
@@ -223,6 +240,10 @@ describe("starting a job through the real dialog", () => {
     document.querySelector<HTMLElement>('[data-agent-id="start-work-trigger"]')!.click();
     await settle();
     expect(document.querySelector('[data-agent-id="customerId"]')).toBeNull();
+    // And it says so, rather than "Add a customer below to get started" — the
+    // owner reported being told they had no customers when they had plenty.
+    expect(document.body.textContent).toContain("Loading customers");
+    expect(document.body.textContent).not.toContain("Add a customer below");
 
     // The fetch lands.
     rerender(
@@ -233,6 +254,7 @@ describe("starting a job through the real dialog", () => {
         defaultSiteName={null}
         customers={customers}
         sites={sites}
+        customersStatus={{ isLoading: false, error: undefined, retry: () => undefined }}
       />,
     );
     await settle();
@@ -249,13 +271,14 @@ describe("starting a job through the real dialog", () => {
           customer: "Shree Constructions",
           site: "Late Loading Site",
           startHourMeter: 1200,
+          tool: "Bucket",
         },
         ["start-work-trigger"],
       ),
       () => undefined,
       { waitMs: 400 },
     );
-    expect(sent.body).toMatchObject({ customerId: "cus_1", siteName: "Late Loading Site" });
+    expect(sent.body).toMatchObject({ customerId: "cus_1", siteName: "Late Loading Site", attachment: "Bucket" });
   });
 
   it("refuses to start when no operator is on the machine", async () => {
@@ -278,6 +301,7 @@ describe("starting a job through the real dialog", () => {
         customer: "Shree Constructions",
         site: "Hinjawadi",
         startHourMeter: 1200,
+        tool: "Bucket",
       }),
       () => undefined,
       { waitMs: 300 },
@@ -392,6 +416,7 @@ describe("adding a day's reading through the real dialog", () => {
         date: "2026-10-23",
         endHourMeter: 1208,
         dieselLiters: 40,
+        tool: "Bucket",
       }),
       () => undefined,
       { waitMs: 400 },
@@ -403,12 +428,13 @@ describe("adding a day's reading through the real dialog", () => {
     expect(Number(sent.body?.endHourMeter)).toBe(1208);
     // Litres, never rupees — the registry and the form have to agree on that.
     expect(Number(sent.body?.dieselLiters)).toBe(40);
+    expect(sent.body?.attachment).toBe("Bucket");
   });
 
   it("leaves diesel out rather than zeroing it when none was mentioned", async () => {
     render(<AddDailyLogDialog excavatorId="ex_1" workSessionId="ws_1" currentHourMeter={1200} />);
     await executePlan(
-      planFor("reading.add", { machine: "Komatsu PC200", date: "2026-10-23", endHourMeter: 1208 }),
+      planFor("reading.add", { machine: "Komatsu PC200", date: "2026-10-23", endHourMeter: 1208, tool: "Bucket" }),
       () => undefined,
       { waitMs: 400 },
     );

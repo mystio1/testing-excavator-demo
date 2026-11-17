@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AttachmentPicker } from "@/components/attachment-picker";
+import { WorkTotalHours, formTotalHours, workTotalHours } from "@/components/work-total-hours";
+import { TOOL_REQUIRED_MESSAGE } from "@/lib/attachments";
 import { ChangeReview } from "@/components/change-review";
 import { summarizeChanges, type FieldChange } from "@/lib/utils/change-summary";
 import { cn } from "@/lib/utils";
@@ -43,6 +45,11 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
   const [conflict, setConflict] = useState(false);
   const [review, setReview] = useState<{ body: Record<string, unknown>; changes: FieldChange[] } | null>(null);
   const [nothingChanged, setNothingChanged] = useState(false);
+  const [toolError, setToolError] = useState<string | null>(null);
+  const formId = `edit-reading-form-${log.id}`;
+  /** Seeded from the stored reading so the total is right the moment the
+   * dialog opens, then recomputed from the form on every edit. */
+  const [totalHours, setTotalHours] = useState<number | null>(() => storedHours(log));
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     setConflict(false);
     try {
@@ -62,6 +69,8 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
       setConflict(false);
       setReview(null);
       setNothingChanged(false);
+      setToolError(null);
+      setTotalHours(storedHours(log));
     }
     setOpen(next);
   }
@@ -76,6 +85,12 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    // Compulsory here too: a correction must not be the way an entry loses the
+    // tool it was saved with (Site Analysis prices hours by it).
+    if (!fd.get("attachment")) {
+      setToolError(TOOL_REQUIRED_MESSAGE);
+      return;
+    }
     const body = {
       date: fd.get("date"),
       startHourMeter: mode === "meter" ? fd.get("startHourMeter") || undefined : undefined,
@@ -86,7 +101,7 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
       operatorName: fd.get("operatorName") || undefined,
       dieselLiters: fd.get("dieselLiters") || undefined,
       notes: fd.get("notes") || undefined,
-      attachment: fd.get("attachment") || undefined,
+      attachment: fd.get("attachment"),
     };
     const timeBased = mode === "time";
     const changes = summarizeChanges([
@@ -154,7 +169,12 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
           />
         )}
         {/* Kept mounted (just hidden) while confirming, so "No, go back" returns to exactly what was typed. */}
-        <form onSubmit={onSubmit} className={review ? "hidden" : "flex flex-col gap-4"}>
+        <form
+          id={formId}
+          onSubmit={onSubmit}
+          onChange={(e) => setTotalHours(formTotalHours(e.currentTarget, mode))}
+          className={review ? "hidden" : "flex flex-col gap-4"}
+        >
           <div className="flex flex-col gap-2">
             <Label htmlFor="date" className="text-base">Date</Label>
             <Input id="date" name="date" type="date" defaultValue={dateValue} required className="h-12 text-base" />
@@ -166,7 +186,11 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
                 key={m}
                 type="button"
                 aria-pressed={mode === m}
-                onClick={() => setMode(m)}
+                onClick={() => {
+                  setMode(m);
+                  const form = document.getElementById(formId) as HTMLFormElement | null;
+                  if (form) setTotalHours(formTotalHours(form, m));
+                }}
                 className={cn(
                   "min-h-10 flex-1 rounded-md py-2 text-sm font-semibold",
                   mode === m ? "bg-background shadow-sm" : "text-muted-foreground",
@@ -207,12 +231,21 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
             </>
           )}
 
+          <WorkTotalHours hours={totalHours} mode={mode} />
+
           <div className="flex flex-col gap-2">
             <Label htmlFor="operatorName" className="text-base">Operator Name (Optional)</Label>
             <Input id="operatorName" name="operatorName" defaultValue={log.operatorName ?? ""} className="h-12 text-base" />
           </div>
 
-          <AttachmentPicker name="attachment" label="Attachment / Tool Used (Optional)" defaultValue={log.attachment ?? undefined} />
+          <AttachmentPicker
+            name="attachment"
+            label="Attachment / Tool Used"
+            required
+            error={toolError}
+            onValueChange={() => setToolError(null)}
+            defaultValue={log.attachment ?? undefined}
+          />
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="dieselLiters" className="text-base">Diesel Taken (L) (Optional)</Label>
@@ -240,5 +273,15 @@ export function EditReadingButton({ log, invalidateKey }: { log: EditableLog; in
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** The hours the stored reading already represents, by whichever of the two
+ * ways it was recorded. */
+function storedHours(log: EditableLog): number | null {
+  return workTotalHours(
+    log.startHourMeter != null && log.endHourMeter != null
+      ? { mode: "meter", startHourMeter: log.startHourMeter, endHourMeter: log.endHourMeter }
+      : { mode: "time", startTime: log.startTime, stopTime: log.stopTime, breakMinutes: log.breakMinutes },
   );
 }

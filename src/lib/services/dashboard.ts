@@ -433,6 +433,24 @@ export async function getDashboardSummary(businessId: string) {
   const revenueLastMonth = round2(revenueLastMonthAgg._sum.totalAmount).toNumber();
   const amountReceived = round2(receivedAgg._sum.amount).toNumber();
   const pendingPayments = round2(dec(pendingBillsAgg._sum.totalAmount).minus(dec(pendingBillsAgg._sum.paidAmount))).toNumber();
+
+  /**
+   * "Total Amount" = every rupee of work on the books, invoiced or not.
+   *
+   * It used to be the sum of Bill.totalAmount alone, which left out work that
+   * has been done and approved but not billed yet. Site Analysis values that
+   * work at the site rates and counts it in its own Revenue and Pending, so
+   * the two screens disagreed: the owner saw ₹X pending on Site Analysis and a
+   * home total that did not include it. Adding the unbilled part here closes
+   * that gap — bills still carry the billed money (including direct bills,
+   * which belong to no work session and so never appear in the Site Analysis
+   * engine), and `unbilledRevenue` adds the rest exactly once.
+   */
+  const billedAllTime = round2(allTimeAgg._sum.totalAmount).toNumber();
+  const totalRevenueAllTime = round2(dec(billedAllTime).plus(dec(siteTotals.unbilledRevenue))).toNumber();
+  /** Of that total, what has not been collected — the figure Site Analysis
+   * calls Pending, over the whole business. */
+  const pendingAmount = round2(dec(totalRevenueAllTime).minus(dec(amountReceived))).toNumber();
   const revenueTrendPct = percentChange(revenueThisMonth, revenueLastMonth);
   const hoursTrendPct = percentChange(hoursThisMonth, hoursLastMonth);
 
@@ -464,7 +482,20 @@ export async function getDashboardSummary(businessId: string) {
     pendingPayments,
     pendingBillsCount: pendingBillsAgg._count,
     totalCustomers,
-    totalRevenueAllTime: round2(allTimeAgg._sum.totalAmount).toNumber(),
+    /**
+     * NOTE this field's MEANING changed, not its name or type: it now includes
+     * unbilled work. Additive in the ADR-0005 sense — no field was removed or
+     * renamed and nothing breaks — but an installed APK showing "Total Amount"
+     * will start showing the larger figure without being updated. That is the
+     * intended behaviour: the complaint was that the home total disagreed with
+     * Site Analysis, and an old install should stop disagreeing too.
+     */
+    totalRevenueAllTime,
+    /** The two parts of it, so a screen that wants only invoiced money (or
+     * only the unbilled part) does not have to re-derive either. */
+    billedRevenueAllTime: billedAllTime,
+    unbilledRevenueAllTime: siteTotals.unbilledRevenue,
+    pendingAmount,
     totalBillsCount: allTimeAgg._count,
     upcomingServices: excavatorsWithStatus.filter((e) => e.serviceStatus.dueSoon).length,
     operatorSalaryDue: toNumber(operatorSalaryDue),

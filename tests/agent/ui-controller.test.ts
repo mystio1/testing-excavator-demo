@@ -388,7 +388,7 @@ describe("reporting what the screen shows", () => {
 
   it("does not confirm one that never appears", async () => {
     document.body.innerHTML = "";
-    expect(await verifyResult("active-work-card", 200)).toBe(false);
+    expect(await verifyResult("active-work-card", undefined, 200)).toBe(false);
   });
 
   it("reads a control's text, collapsed and bounded", () => {

@@ -7,7 +7,7 @@ import { usableTranscript, type WhisperBody } from "@/lib/agent/transcript";
  */
 
 /** A confident, ordinary segment — the shape of someone actually speaking. */
-const spoken = (text: string): WhisperBody["segments"] => [
+const spoken = (text: string): NonNullable<WhisperBody["segments"]> => [
   { text, avg_logprob: -0.18, no_speech_prob: 0.02, compression_ratio: 1.4 },
 ];
 

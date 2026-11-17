@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/native-select";
 import { AttachmentPicker } from "@/components/attachment-picker";
+import { TOOL_REQUIRED_MESSAGE } from "@/lib/attachments";
 import { ChangeReview } from "@/components/change-review";
 import { summarizeChanges, type FieldChange } from "@/lib/utils/change-summary";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -51,6 +52,7 @@ export function EditSessionButton({ session, invalidateKey }: { session: Editabl
   // After "Save": the changes waiting for the admin to answer "Are you sure you want to change this?".
   const [review, setReview] = useState<{ body: Record<string, unknown>; changes: FieldChange[] } | null>(null);
   const [nothingChanged, setNothingChanged] = useState(false);
+  const [toolError, setToolError] = useState<string | null>(null);
   const { data: customersData } = useSWR<{ customers: { id: string; name: string }[] }>(
     open ? "/api/customers/options" : null,
     swrFetcher,
@@ -79,6 +81,7 @@ export function EditSessionButton({ session, invalidateKey }: { session: Editabl
       setDeleteError(null);
       setReview(null);
       setNothingChanged(false);
+      setToolError(null);
     }
     setOpen(next);
   }
@@ -97,6 +100,12 @@ export function EditSessionButton({ session, invalidateKey }: { session: Editabl
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    // Compulsory here too, for the same reason as on the reading: the tool is
+    // what Site Analysis prices the job's hours by.
+    if (!fd.get("attachment")) {
+      setToolError(TOOL_REQUIRED_MESSAGE);
+      return;
+    }
     const body = {
       customerId: fd.get("customerId"),
       operatorId: fd.get("operatorId"),
@@ -107,7 +116,7 @@ export function EditSessionButton({ session, invalidateKey }: { session: Editabl
       endHourMeter: fd.get("endHourMeter") || undefined,
       totalHours: fd.get("totalHours") || undefined,
       dieselLiters: fd.get("dieselLiters") || undefined,
-      attachment: fd.get("attachment") || undefined,
+      attachment: fd.get("attachment"),
       notes: fd.get("notes") || undefined,
     };
     const nameOf = (list: { id: string; name: string }[], id: unknown) => list.find((x) => x.id === id)?.name ?? String(id ?? "");
@@ -243,7 +252,14 @@ export function EditSessionButton({ session, invalidateKey }: { session: Editabl
           <p className="-mt-2 text-xs text-muted-foreground">
             If this job has approved daily readings, its hours come from those readings instead of Total Hours.
           </p>
-          <AttachmentPicker name="attachment" label="Attachment / Tool Used (Optional)" defaultValue={session.attachment} />
+          <AttachmentPicker
+            name="attachment"
+            label="Attachment / Tool Used"
+            required
+            error={toolError}
+            onValueChange={() => setToolError(null)}
+            defaultValue={session.attachment}
+          />
           <div className="flex flex-col gap-2">
             <Label htmlFor="notes">Note (Optional)</Label>
             <Input id="notes" name="notes" defaultValue={session.notes ?? ""} className="h-11" />

@@ -96,7 +96,21 @@ export default function SiteMachinePage() {
               <div className="grid grid-cols-2 gap-y-1 text-sm">
                 <KeyValue label="Total Diesel" value={`${diesel.total} L`} />
                 <KeyValue label="Average / Day" value={`${diesel.avgPerDay} L`} />
-                <KeyValue label="Avg L / Hr" value={diesel.avgPerHour === null ? "N/A" : `${diesel.avgPerHour} L/hr`} />
+                {/* Simple first, because it is always available: diesel taken
+                    ÷ hours worked, and the same sum the other way up. */}
+                <KeyValue
+                  label="Simple Avg (Diesel ÷ Hrs)"
+                  value={diesel.simple.litresPerHour === null ? "—" : `${diesel.simple.litresPerHour} L/hr`}
+                  strong
+                />
+                <KeyValue
+                  label="Hours per Litre"
+                  value={diesel.simple.hoursPerLitre === null ? "—" : `${diesel.simple.hoursPerLitre} hrs/L`}
+                />
+                <KeyValue
+                  label="Exact Avg (Burned)"
+                  value={diesel.avgPerHour === null ? "Not yet" : `${diesel.avgPerHour} L/hr`}
+                />
                 {diesel.consumption?.avgLPerHour != null ? (
                   <>
                     <KeyValue label="Latest Rate" value={`${diesel.consumption.avgLPerHour} L/hr`} strong />
@@ -107,7 +121,12 @@ export default function SiteMachinePage() {
                   </>
                 ) : (
                   <p className="col-span-2 pt-1 text-xs text-muted-foreground">
-                    Enter closing diesel in tank on each entry to unlock the consumption rate & runtime prediction.
+                    The simple average above is {summary.diesel} L ÷ {formatHours(summary.hours)} and needs nothing
+                    further.{" "}
+                    <span className="font-semibold">
+                      Enter the diesel remaining in the tank now to get the exact reading
+                    </span>{" "}
+                    — that one measures diesel actually burned, and also predicts how long the tank will last.
                   </p>
                 )}
               </div>

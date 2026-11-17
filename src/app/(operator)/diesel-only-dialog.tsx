@@ -27,24 +27,26 @@ import {
 export function DieselOnlyDialog({ lang }: { lang: OperatorLang }) {
   const { mutate } = useSWRConfig();
   const [open, setOpen] = useState(false);
-  const [confirmSkipRemaining, setConfirmSkipRemaining] = useState(false);
+  const [toolError, setToolError] = useState<string | null>(null);
   const today = todayLocal();
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch("/api/operator/diesel", { method: "POST", body: JSON.stringify(body) });
   });
   const t = (key: string) => ot(lang, key);
 
-  async function submit(fd: FormData, skipRemainingCheck = false) {
+  /** Saves on the first press: the litres left in the tank are asked for once,
+   * on the form, and a blank one is accepted without a second question. */
+  async function submit(fd: FormData) {
     const remaining = fd.get("remainingDieselLiters");
-    if (!skipRemainingCheck && (!remaining || remaining === "")) {
-      setConfirmSkipRemaining(true);
+    if (!fd.get("attachment")) {
+      setToolError(t("tool.required"));
       return;
     }
     const ok = await run({
       dieselLiters: fd.get("dieselLiters"),
       remainingDieselLiters: remaining || undefined,
       date: fd.get("date"),
-      attachment: fd.get("attachment") || undefined,
+      attachment: fd.get("attachment"),
       notes: fd.get("notes") || undefined,
     });
     if (ok) {
@@ -55,7 +57,6 @@ export function DieselOnlyDialog({ lang }: { lang: OperatorLang }) {
 
   function handleOpen(v: boolean) {
     setOpen(v);
-    if (!v) setConfirmSkipRemaining(false);
   }
 
   return (
@@ -118,47 +119,19 @@ export function DieselOnlyDialog({ lang }: { lang: OperatorLang }) {
               min="0"
               placeholder="e.g. 70"
               className="h-12 text-base"
-              onChange={() => setConfirmSkipRemaining(false)}
             />
             <p className="text-xs text-muted-foreground">
-              How many litres were left before you filled up? Used to calculate consumption rate.
+              How many litres were left before you filled up? Leave blank if you don&apos;t have it — it only
+              makes the consumption rate exact.
             </p>
           </div>
-
-          {confirmSkipRemaining && (
-            <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-3 text-sm">
-              <p className="font-semibold text-amber-700 dark:text-amber-300">
-                No remaining diesel entered
-              </p>
-              <p className="mt-1 text-amber-700/80 dark:text-amber-300/80">
-                Without it, we can&apos;t calculate the actual consumption rate. Are you sure you want to skip?
-              </p>
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="submit"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    const form = e.currentTarget.closest("form") as HTMLFormElement;
-                    submit(new FormData(form), true);
-                  }}
-                  className="flex-1 rounded-lg bg-amber-500 py-2 text-sm font-semibold text-white"
-                >
-                  Yes, skip remaining
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmSkipRemaining(false)}
-                  className="flex-1 rounded-lg bg-muted py-2 text-sm font-semibold text-foreground"
-                >
-                  Enter it
-                </button>
-              </div>
-            </div>
-          )}
 
           <AttachmentPicker
             name="attachment"
             label={t("dieselOnly.attachment")}
+            required
+            error={toolError}
+            onValueChange={() => setToolError(null)}
             optionLabels={{ Bucket: t("tool.bucket"), Breaker: t("tool.breaker"), Chaining: t("tool.chaining") }}
           />
 
@@ -171,13 +144,11 @@ export function DieselOnlyDialog({ lang }: { lang: OperatorLang }) {
 
           {error && <p role="alert" className="text-sm font-medium text-destructive">{otMsg(lang, error)}</p>}
 
-          {!confirmSkipRemaining && (
-            <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
-              <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
-                {pending ? t("dieselOnly.submitting") : t("dieselOnly.submit")}
-              </Button>
-            </DialogFooter>
-          )}
+          <DialogFooter className="-mx-0 -mb-0 rounded-none border-0 bg-transparent p-0 sm:justify-stretch">
+            <Button type="submit" size="lg" className="h-12 w-full text-base" disabled={pending}>
+              {pending ? t("dieselOnly.submitting") : t("dieselOnly.submit")}
+            </Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

@@ -42,6 +42,28 @@ const operatorField = (control: string): WorkflowField => ({
   prompt: ask("Which operator?", "कौन सा ऑपरेटर?", "कोणता ऑपरेटर?"),
 });
 
+/**
+ * The tool on the machine. Compulsory wherever work is recorded, because Site
+ * Analysis splits hours into Bucket / Brekar by it and prices them from that
+ * split — work saved without one is counted but cannot be valued. The forms
+ * enforce it, so a workflow that could not set it would simply fail at submit.
+ *
+ * Driven with `pickFromList`, not `select`: the control is a row of buttons
+ * (AttachmentPicker), and its labels are the canonical English values, so
+ * matching behaves the same whatever language the portal is in.
+ */
+const toolField = (control: string): WorkflowField => ({
+  name: "tool",
+  kind: "select",
+  required: true,
+  control,
+  prompt: ask(
+    "Which tool — bucket, breaker or chaining?",
+    "कौन सा औज़ार — बकेट, ब्रेकर या चेनिंग?",
+    "कोणते अवजार — बकेट, ब्रेकर की चेनिंग?",
+  ),
+});
+
 const machineField = (control: string): WorkflowField => ({
   name: "machine",
   kind: "entity",
@@ -216,7 +238,7 @@ export const WORKFLOWS: Workflow[] = [
     id: "work.start",
     status: "ready",
     effect: "WRITE",
-    summary: "Start a job: customer, site, starting hour meter.",
+    summary: "Start a job: customer, site, starting hour meter, tool.",
     route: "/excavators/detail",
     openWith: "start-work-trigger",
     fields: [
@@ -256,6 +278,7 @@ export const WORKFLOWS: Workflow[] = [
         control: "startDate",
         prompt: ask("Which day did it start?", "किस दिन शुरू हुआ?", "कोणत्या दिवशी सुरू झाले?"),
       },
+      toolField("attachment"),
     ],
     steps: [
       { action: "navigate", route: "/excavators" },
@@ -273,6 +296,8 @@ export const WORKFLOWS: Workflow[] = [
       { action: "fill", control: "startHourMeter", fromField: "startHourMeter" },
       // Optional: skipped when unsaid, so the form keeps its own default of today.
       { action: "fill", control: "startDate", fromField: "startDate" },
+      // The tool is compulsory on the form, so this has to run before submit.
+      { action: "pickFromList", control: "attachment", fromField: "tool" },
       { action: "submit", control: "start-work-submit" },
     ],
     verify: { control: "active-work-card" },
@@ -284,7 +309,7 @@ export const WORKFLOWS: Workflow[] = [
     id: "reading.add",
     status: "ready",
     effect: "WRITE",
-    summary: "Add a day to a running job: meter, diesel.",
+    summary: "Add a day to a running job: meter, tool, diesel.",
     route: "/excavators/detail",
     openWith: "add-reading-trigger",
     fields: [
@@ -315,6 +340,7 @@ export const WORKFLOWS: Workflow[] = [
         control: "dieselLiters",
         prompt: ask("How many litres of diesel?", "कितने लीटर डीज़ल?", "किती लिटर डिझेल?"),
       },
+      toolField("attachment"),
     ],
     steps: [
       { action: "navigate", route: "/excavators" },
@@ -325,6 +351,8 @@ export const WORKFLOWS: Workflow[] = [
       // Optional: skipped when no diesel was mentioned, so the box stays empty
       // rather than being zeroed.
       { action: "fill", control: "dieselLiters", fromField: "dieselLiters" },
+      // The tool is compulsory on the form, so this has to run before submit.
+      { action: "pickFromList", control: "attachment", fromField: "tool" },
       { action: "submit", control: "add-reading-submit" },
     ],
     verify: { control: "readings-list" },

@@ -168,12 +168,12 @@ describe("when the sidecar answers", () => {
 
   it("sends the audio and the language the way the service expects", async () => {
     const { transcribeWithIndic } = await load({ INDIC_ASR_URL: url });
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ text: "ठीक" }), { status: 200 }));
+    const fetchMock = vi.fn(async (_url: string, _init: { body: FormData }) => new Response(JSON.stringify({ text: "ठीक" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await transcribeWithIndic(clip(), "speech.webm", "hi");
 
-    const [calledUrl, init] = fetchMock.mock.calls[0] as [string, { body: FormData }];
+    const [calledUrl, init] = fetchMock.mock.calls[0]!;
     expect(calledUrl).toBe(`${url}/transcribe`);
     expect(init.body.get("lang")).toBe("hi");
     expect(init.body.get("audio")).toBeInstanceOf(Blob);
@@ -181,7 +181,7 @@ describe("when the sidecar answers", () => {
 
   it("does not care about a trailing slash in the configured URL", async () => {
     const { transcribeWithIndic } = await load({ INDIC_ASR_URL: `${url}/` });
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ text: "ok" }), { status: 200 }));
+    const fetchMock = vi.fn(async (_url: string, _init: { body: FormData }) => new Response(JSON.stringify({ text: "ok" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     await transcribeWithIndic(clip(), "speech.webm", "mr");
     expect(fetchMock.mock.calls[0]![0]).toBe(`${url}/transcribe`);

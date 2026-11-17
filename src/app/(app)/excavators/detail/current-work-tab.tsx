@@ -1,8 +1,9 @@
 "use client";
 
-import useSWR, { useSWRConfig } from "swr";
+import { useSWRConfig } from "swr";
 import { useState } from "react";
-import { swrFetcher, apiFetch } from "@/lib/api-client";
+import { apiFetch } from "@/lib/api-client";
+import { useCustomerOptions, useSiteOptions } from "@/lib/use-options";
 import { formatDate, formatDateTime } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
 import { Card, CardContent } from "@/components/ui/card";
@@ -78,9 +79,6 @@ type OperatorWorkRequest = {
   submittedAt?: Date | null;
   operator: { name: string };
 };
-
-type CustomerOption = { id: string; name: string; companyName: string | null };
-type SiteOption = { id: string; name: string; customerId: string | null };
 
 function DailyLogRow({ excavatorId, log }: { excavatorId: string; log: DailyLog }) {
   const { mutate } = useSWRConfig();
@@ -171,19 +169,17 @@ export function CurrentWorkTab({
   activeWork: ActiveWork;
   operatorWorkRequests: OperatorWorkRequest[];
 }) {
-  const { data } = useSWR<{ customers: CustomerOption[] }>(
-    activeWork ? null : "/api/customers/options",
-    swrFetcher,
-  );
+  // useCustomerOptions / useSiteOptions rather than a bare useSWR: they retry
+  // by themselves, keep a cached copy so reopening the form is instant, and
+  // report WHY a list is empty — which is what StartWorkDialog needs to stop
+  // telling an owner with customers that they have none. See use-options.ts.
+  const customerOptions = useCustomerOptions(!activeWork);
   // Carries each site's customer, so Start Work can default it rather than ask.
-  const { data: siteData } = useSWR<{ sites: SiteOption[] }>(
-    activeWork ? null : "/api/sites/options",
-    swrFetcher,
-  );
+  const siteOptions = useSiteOptions(!activeWork);
 
   if (!activeWork) {
-    const customers = data?.customers ?? [];
-    const sites = siteData?.sites ?? [];
+    const customers = customerOptions.items;
+    const sites = siteOptions.items;
 
     return (
       <div className="flex flex-col gap-4">
@@ -201,6 +197,11 @@ export function CurrentWorkTab({
                 defaultSiteName={defaultSiteName}
                 customers={customers}
                 sites={sites}
+                customersStatus={{
+                  isLoading: customerOptions.isLoading,
+                  error: customerOptions.error,
+                  retry: customerOptions.retry,
+                }}
               />
             </CardContent>
           </Card>
