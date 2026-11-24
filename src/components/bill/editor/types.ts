@@ -1,10 +1,13 @@
 /** Shapes shared by the bill editor's hook, math and components. */
 
+import type { SiteOption } from "../site-defaults";
+
 export type BillType = "GST" | "NON_GST";
 
 export type BillFormOptions = {
   customers: { id: string; name: string; companyName: string | null }[];
-  sites: { id: string; name: string }[];
+  /** With the customer they belong to and their saved rates (Site Analysis). */
+  sites: SiteOption[];
   excavators: {
     id: string;
     name: string;

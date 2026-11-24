@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AttachmentPicker } from "@/components/attachment-picker";
+import { HoursWorkedPreview } from "@/components/hours-worked-preview";
 import { todayLocal } from "@/lib/utils/dates";
 import { ot, otMsg, type OperatorLang } from "@/lib/i18n/operator";
 import {
@@ -23,6 +24,7 @@ import {
 export function EndWorkDialog({
   requestId,
   currentHourMeter,
+  startHourMeter,
   startDate,
   endDate,
   attachment,
@@ -31,6 +33,8 @@ export function EndWorkDialog({
 }: {
   requestId: string;
   currentHourMeter: number;
+  /** The reading the job started at — total hours are counted from it. */
+  startHourMeter: number;
   /** The work date the operator entered when starting. */
   startDate: Date;
   /** A previously submitted work end date (resubmission after a reject). */
@@ -43,6 +47,7 @@ export function EndWorkDialog({
   const { mutate } = useSWRConfig();
   const [open, setOpen] = useState(false);
   const [toolError, setToolError] = useState<string | null>(null);
+  const [endReading, setEndReading] = useState(String(currentHourMeter));
   const today = todayLocal();
   const startDateValue = new Date(startDate).toISOString().slice(0, 10);
   const endDateValue = endDate ? new Date(endDate).toISOString().slice(0, 10) : startDateValue;
@@ -72,7 +77,13 @@ export function EndWorkDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (next) setEndReading(String(currentHourMeter));
+        setOpen(next);
+      }}
+    >
       <DialogTrigger
         render={
           <Button
@@ -101,10 +112,17 @@ export function EndWorkDialog({
               type="number"
               step="0.1"
               min="0"
-              defaultValue={currentHourMeter}
+              value={endReading}
+              onChange={(e) => setEndReading(e.target.value)}
               required
               className="h-12 text-base"
               autoFocus
+            />
+            <HoursWorkedPreview
+              startHourMeter={startHourMeter}
+              endHourMeter={endReading}
+              label={t("endWork.totalHours")}
+              invalidText={t("endWork.endBelowStart")}
             />
           </div>
 

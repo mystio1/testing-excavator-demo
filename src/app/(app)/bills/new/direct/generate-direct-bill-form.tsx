@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Receipt } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
@@ -15,6 +15,8 @@ import { useIdempotencyKey } from "@/components/bill/use-idempotency-key";
 import { TAX_RATES } from "@/components/bill/editor/bill-math";
 import { CheckboxField, ChoiceChip, Field } from "@/components/bill/editor/form-parts";
 import { SubmitBar } from "@/components/bill/editor/submit-bar";
+import { BillPreviewDialog } from "@/components/bill/bill-preview-dialog";
+import { sitesForCustomer, type SiteOption } from "@/components/bill/site-defaults";
 
 import { todayLocal } from "@/lib/utils/dates";
 type Excavator = {
@@ -33,12 +35,15 @@ type BankAccount = {
 export function GenerateDirectBillForm({
   customerId,
   excavators,
+  sites = [],
   bankAccounts,
   businessGstNumber,
   nextNonGstNumber,
 }: {
   customerId: string;
   excavators: Excavator[];
+  /** The customer's sites; the first (ongoing) one's saved rates pre-fill Bucket / Breaker. */
+  sites?: SiteOption[];
   bankAccounts: BankAccount[];
   businessGstNumber: string | null;
   nextNonGstNumber: string;
@@ -60,9 +65,12 @@ export function GenerateDirectBillForm({
   });
 
   const [bucketHours, setBucketHours] = useState(0);
-  const [bucketRate, setBucketRate] = useState(0);
+  const site = sitesForCustomer(sites, customerId)[0];
+  const [bucketRate, setBucketRate] = useState(Number(site?.bucketRate) || 0);
   const [breakerHours, setBreakerHours] = useState(0);
-  const [breakerRate, setBreakerRate] = useState(0);
+  const [breakerRate, setBreakerRate] = useState(Number(site?.breakerRate) || 0);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [preview, setPreview] = useState<null | Record<string, string>>(null);
   const [transportCharges, setTransportCharges] = useState(0);
   const [dieselLiters, setDieselLiters] = useState(0);
   const [dieselPricePerLiter, setDieselPricePerLiter] = useState(0);
@@ -124,7 +132,7 @@ export function GenerateDirectBillForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+    <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-4">
       <Card>
         <CardContent className="@container flex flex-col gap-4">
           <h2 className="text-base font-semibold">Machine &amp; Period</h2>
@@ -432,6 +440,62 @@ export function GenerateDirectBillForm({
         total={totals.total}
         idleLabel="Generate Bill"
         pendingLabel="Generating..."
+        onPreview={() => {
+          const form = formRef.current;
+          if (!form || !form.reportValidity()) return;
+          setPreview(Object.fromEntries([...new FormData(form).entries()].map(([k, v]) => [k, String(v)])));
+        }}
+      />
+
+      <BillPreviewDialog
+        open={preview !== null}
+        onOpenChange={(open) => !open && setPreview(null)}
+        customerId={customerId}
+        bankAccountId={preview?.bankAccountId ?? ""}
+        pending={pending}
+        blocker={nothingBillable ? "Enter bucket hours, breaker hours or transport" : null}
+        onGenerate={() => {
+          setPreview(null);
+          formRef.current?.requestSubmit();
+        }}
+        bill={(() => {
+          const ex = excavators.find((e) => e.id === preview?.excavatorId);
+          const taxPaise = toPaise(totals.tax);
+          const cgstPaise = Math.round(taxPaise / 2);
+          const day = (v: string | undefined) => new Date(`${v || today}T00:00:00`);
+          return {
+            billNumber: billType === "NON_GST" && !manualNonGstNumber ? nextNonGstNumber : (preview?.billNumber ?? ""),
+            billType,
+            billDate: day(preview?.billDate),
+            showCustomerPhone,
+            buyerGstin: preview?.buyerGstin || null,
+            items: [],
+            subtotal: totals.subtotal,
+            transportCharges,
+            fuelCharges: 0,
+            extraCharges: 0,
+            bucketCharge: 0,
+            breakerCharge: 0,
+            discount: 0,
+            gstPercentage: billType === "GST" ? gstPercentage : null,
+            cgst: billType === "GST" ? fromPaise(cgstPaise) : null,
+            sgst: billType === "GST" ? fromPaise(taxPaise - cgstPaise) : null,
+            totalAmount: totals.total,
+            notes: preview?.notes || null,
+            isDirect: true,
+            excavatorName: ex?.name ?? null,
+            machineNumber: ex?.machineNumber ?? null,
+            fromDate: day(preview?.fromDate),
+            toDate: day(preview?.toDate),
+            bucketHours,
+            bucketRate,
+            breakerHours,
+            breakerRate,
+            dieselLiters,
+            dieselPricePerLiter,
+            dieselAdvance: totals.dieselAdvance,
+          };
+        })()}
       />
     </form>
   );

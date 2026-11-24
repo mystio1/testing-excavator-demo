@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Receipt } from "lucide-react";
 import { apiFetch } from "@/lib/api-client";
@@ -17,13 +17,17 @@ import { TAX_RATES } from "@/components/bill/editor/bill-math";
 import { CheckboxField, ChoiceChip, Field } from "@/components/bill/editor/form-parts";
 import { SubmitBar } from "@/components/bill/editor/submit-bar";
 import { DieselDeduction } from "@/components/bill/editor/diesel-fields";
+import { BillPreviewDialog } from "@/components/bill/bill-preview-dialog";
+import { mainAttachment, siteRateFor, sitesForCustomer, type SiteOption } from "@/components/bill/site-defaults";
 
 import { todayLocal } from "@/lib/utils/dates";
 type Session = {
   id: string;
   excavatorName: string;
   machineNumber: string | null;
+  siteId: string;
   siteName: string;
+  attachment: string | null;
   startDate: string;
   endDate: string;
   totalHours: number;
@@ -39,12 +43,14 @@ type BankAccount = {
 
 export function GenerateBillForm({
   customerId,
+  sites,
   sessions,
   bankAccounts,
   businessGstNumber,
   nextNonGstNumber,
 }: {
   customerId: string;
+  sites: SiteOption[];
   sessions: Session[];
   bankAccounts: BankAccount[];
   businessGstNumber: string | null;
@@ -69,11 +75,43 @@ export function GenerateBillForm({
   const [selected, setSelected] = useState<Record<string, boolean>>(
     Object.fromEntries(sessions.map((s) => [s.id, true])),
   );
-  const [ratePerHour, setRatePerHour] = useState(0);
+  // Defaults from Site Analysis: the site these records are at (or the site linked to the
+  // customer), its saved rate for the main tool, and its name to print. All stay editable.
+  const defaults = useMemo(() => {
+    const siteIds = [...new Set(sessions.map((s) => s.siteId))];
+    const linked = sitesForCustomer(sites, customerId)[0];
+    const rateSite = siteIds.length === 1 ? sites.find((x) => x.id === siteIds[0]) : siteIds.length === 0 ? linked : undefined;
+    const tool =
+      mainAttachment(sessions) ??
+      (rateSite?.bucketRate ? "Bucket" : rateSite?.breakerRate ? "Breaker" : null);
+    return {
+      rateSite,
+      siteName: siteIds.length === 1 ? sessions[0].siteName : siteIds.length === 0 ? (linked?.name ?? "") : "",
+      attachment: tool ?? "",
+      rate: siteRateFor(rateSite, tool) ?? 0,
+    };
+  }, [sessions, sites, customerId]);
+  const [siteName, setSiteName] = useState(defaults.siteName);
+  const [ratePerHour, setRatePerHour] = useState(defaults.rate);
   const [transportCharges, setTransportCharges] = useState(0);
   const [fuelCharges, setFuelCharges] = useState(0);
   const [extraCharges, setExtraCharges] = useState(0);
-  const [attachment, setAttachment] = useState("");
+  const [attachment, setAttachment] = useState(defaults.attachment);
+  /** A rate the owner has not overridden follows the tool: Bucket rate <-> Breaker rate. */
+  function changeAttachment(next: string) {
+    const autoRate = siteRateFor(defaults.rateSite, attachment) ?? 0;
+    const nextRate = siteRateFor(defaults.rateSite, next);
+    if (nextRate != null && (ratePerHour === 0 || ratePerHour === autoRate)) setRatePerHour(nextRate);
+    setAttachment(next);
+  }
+  const formRef = useRef<HTMLFormElement>(null);
+  const [preview, setPreview] = useState<null | {
+    billDate: string;
+    billNumber: string;
+    buyerGstin: string;
+    notes: string;
+    bankAccountId: string;
+  }>(null);
   const [discount, setDiscount] = useState(0);
   const [dieselRate, setDieselRate] = useState("");
   const [deductDiesel, setDeductDiesel] = useState(true);
@@ -136,6 +174,7 @@ export function GenerateBillForm({
       fuelCharges: Number(fd.get("fuelCharges")) || 0,
       extraCharges: Number(fd.get("extraCharges")) || 0,
       attachment: attachment || undefined,
+      siteName: siteName.trim() || undefined,
       discount: Number(fd.get("discount")) || 0,
       dieselLiters,
       dieselPricePerLiter: Number(dieselRate) || 0,
@@ -151,7 +190,7 @@ export function GenerateBillForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+    <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-4">
       <Card>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
@@ -235,13 +274,25 @@ export function GenerateBillForm({
                   <NativeSelect
                     id={id}
                     value={attachment}
-                    onChange={(e) => setAttachment(e.target.value)}
+                    onChange={(e) => changeAttachment(e.target.value)}
                     className="h-11 min-w-0"
                   >
                     <option value="">None</option>
                     <option value="Bucket">Bucket</option>
                     <option value="Breaker">Breaker</option>
                   </NativeSelect>
+                )}
+              </Field>
+              <RateHint site={defaults.rateSite} />
+              <Field label="Site Name on Bill" className="col-span-2">
+                {(id) => (
+                  <Input
+                    id={id}
+                    value={siteName}
+                    onChange={(e) => setSiteName(e.target.value)}
+                    placeholder="Each work record's own site"
+                    className="h-11"
+                  />
                 )}
               </Field>
               <Field label="Bill Date" className="col-span-2 @min-[302px]:col-span-1">
@@ -472,7 +523,90 @@ export function GenerateBillForm({
         total={totals.total}
         idleLabel="Generate Bill"
         pendingLabel="Generating..."
+        onPreview={() => {
+          const form = formRef.current;
+          if (!form || !form.reportValidity()) return;
+          const fd = new FormData(form);
+          setPreview({
+            billDate: String(fd.get("billDate") ?? today),
+            billNumber: String(fd.get("billNumber") ?? ""),
+            buyerGstin: String(fd.get("buyerGstin") ?? ""),
+            notes: String(fd.get("notes") ?? ""),
+            bankAccountId: String(fd.get("bankAccountId") ?? ""),
+          });
+        }}
+      />
+
+      <BillPreviewDialog
+        open={preview !== null}
+        onOpenChange={(open) => !open && setPreview(null)}
+        customerId={customerId}
+        bankAccountId={preview?.bankAccountId ?? ""}
+        pending={pending}
+        blocker={noSelection ? "Select at least one work record" : null}
+        onGenerate={() => {
+          setPreview(null);
+          formRef.current?.requestSubmit();
+        }}
+        bill={{
+          billNumber: billType === "NON_GST" && !manualNonGstNumber ? nextNonGstNumber : (preview?.billNumber ?? ""),
+          billType,
+          billDate: new Date(`${preview?.billDate ?? today}T00:00:00`),
+          showCustomerPhone,
+          buyerGstin: preview?.buyerGstin || null,
+          items: selectedSessions.map((s) => ({
+            excavatorName: s.excavatorName,
+            machineNumber: s.machineNumber,
+            attachment: attachment || null,
+            siteName: siteName.trim() || s.siteName,
+            fromDate: new Date(s.startDate),
+            toDate: new Date(s.endDate),
+            hours: s.totalHours,
+            ratePerHour,
+            amount: fromPaise(lineAmountPaise(s.totalHours, ratePerHour)),
+          })),
+          subtotal: totals.subtotal,
+          transportCharges,
+          fuelCharges,
+          extraCharges,
+          bucketCharge: 0,
+          breakerCharge: 0,
+          discount,
+          gstPercentage: billType === "GST" ? gstPercentage : null,
+          cgst: billType === "GST" ? fromPaise(Math.round(toPaise(totals.tax) / 2)) : null,
+          sgst: billType === "GST" ? fromPaise(toPaise(totals.tax) - Math.round(toPaise(totals.tax) / 2)) : null,
+          totalAmount: totals.total,
+          notes: preview?.notes || null,
+          dieselLiters,
+          dieselPricePerLiter: Number(dieselRate) || 0,
+          dieselAdvance: totals.dieselAdvance,
+        }}
       />
     </form>
+  );
+}
+
+/** What Site Analysis has saved for the site, so the owner can see where the rate came from. */
+function RateHint({ site }: { site: SiteOption | undefined }) {
+  if (!site) return null;
+  const has = (r: number | null | undefined) => r != null && Number(r) > 0;
+  return (
+    <p className="col-span-2 -mt-2 text-xs text-muted-foreground">
+      {has(site.bucketRate) || has(site.breakerRate) ? (
+        <>
+          Saved rates for <span className="font-semibold">{site.name}</span>:{" "}
+          {[
+            has(site.bucketRate) ? `Bucket ${formatCurrency(Number(site.bucketRate))}/hr` : null,
+            has(site.breakerRate) ? `Breaker ${formatCurrency(Number(site.breakerRate))}/hr` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </>
+      ) : (
+        <span className="text-amber-700 dark:text-amber-400">
+          No rate saved for {site.name} yet — enter it here, or save it in Site Analysis to fill it in next time.
+        </span>
+      )}
+    </p>
   );
 }

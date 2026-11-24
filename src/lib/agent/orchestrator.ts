@@ -4,7 +4,8 @@ import { say, type Localized } from "./i18n";
 import { recordTurnMetric } from "./metrics";
 import { isEntityKind, rememberAlias, type EntityKind } from "./aliases";
 import { resolveSpokenDay } from "./dates";
-import { answerFromScreen, askGroq, GroqError, type GroqTurn } from "./groq";
+import { answerFromKnowledge, answerFromScreen, askGroq, GroqError, type GroqTurn } from "./groq";
+import { relevantKnowledge } from "./knowledge";
 import { planWorkflow, type UiOperation } from "./plan";
 import { authorize, ownsTask, requiresConfirmation, type Actor } from "./policy";
 import {
@@ -383,6 +384,21 @@ const CANNOT_DO: Localized = {
   pa: "ਇਹ ਕੰਮ ਮੈਂ ਹਾਲੇ ਇਸ ਐਪ ਵਿੱਚ ਨਹੀਂ ਕਰ ਸਕਦਾ।",
 };
 
+/** A question about the app that the guide does not cover. Said instead of a
+ * guess: an owner who cannot read the screen back has no way to catch an
+ * invented menu path. */
+const NOT_IN_GUIDE: Localized = {
+  en: "I don't have that in the app guide. Please check the screen, or ask it another way.",
+  hi: "यह जानकारी ऐप गाइड में नहीं है. स्क्रीन पर देख लें, या दूसरे तरीके से पूछें.",
+  mr: "ही माहिती अॅप गाइडमध्ये नाही. स्क्रीनवर पाहा, किंवा दुसऱ्या पद्धतीने विचारा.",
+  gu: "આ માહિતી એપ ગાઇડમાં નથી. સ્ક્રીન પર જુઓ, અથવા બીજી રીતે પૂછો.",
+  ta: "இந்தத் தகவல் செயலி வழிகாட்டியில் இல்லை. திரையில் பாருங்கள், அல்லது வேறு விதமாகக் கேளுங்கள்.",
+  te: "ఈ సమాచారం యాప్ గైడ్‌లో లేదు. స్క్రీన్‌లో చూడండి, లేదా వేరే విధంగా అడగండి.",
+  kn: "ಈ ಮಾಹಿತಿ ಆ್ಯಪ್ ಗೈಡ್‌ನಲ್ಲಿ ಇಲ್ಲ. ಪರದೆಯಲ್ಲಿ ನೋಡಿ, ಅಥವಾ ಬೇರೆ ರೀತಿಯಲ್ಲಿ ಕೇಳಿ.",
+  bn: "এই তথ্য অ্যাপ গাইডে নেই। স্ক্রিনে দেখে নিন, অথবা অন্যভাবে জিজ্ঞাসা করুন।",
+  pa: "ਇਹ ਜਾਣਕਾਰੀ ਐਪ ਗਾਈਡ ਵਿੱਚ ਨਹੀਂ ਹੈ। ਸਕ੍ਰੀਨ 'ਤੇ ਵੇਖੋ, ਜਾਂ ਕਿਸੇ ਹੋਰ ਤਰੀਕੇ ਨਾਲ ਪੁੱਛੋ।",
+};
+
 /** Understood, but the steps could not be worked out. */
 const CANNOT_PLAN: Localized = {
   en: "I couldn't work out how to do that.",
@@ -533,6 +549,13 @@ export type AnswerFn = (input: {
   lang: AgentLang;
 }) => Promise<string>;
 
+/** Injected in tests so the help path needs no key either. */
+export type HelpFn = (input: {
+  question: string;
+  guide: { title: string; body: string }[];
+  lang: AgentLang;
+}) => Promise<string>;
+
 /**
  * One user message. `ask` is injectable so the whole loop can be tested without
  * a key or a network call.
@@ -546,6 +569,7 @@ export async function handleMessage(
     store?: TaskStore;
     lookupAlias?: LookupAliasFn;
     listRecords?: ListRecordsFn;
+    help?: HelpFn;
   } = {},
 ): Promise<AgentReply> {
   const store = deps.store ?? defaultStore;
@@ -588,6 +612,31 @@ export async function handleMessage(
   if (understood.kind === "reply") {
     recordTurnMetric({ outcome: "replied", lang: input.lang });
     return { taskId: (await save(store, task)).id, state: task.state, say: understood.message };
+  }
+
+  if (understood.kind === "help") {
+    // The guide is searched with both the model's English restatement and the
+    // owner's own words: the restatement is what makes Hinglish and Marathi
+    // findable, the original keeps anything the restatement dropped.
+    const guide = relevantKnowledge([understood.topic, input.text]);
+    if (guide.length === 0) {
+      recordTurnMetric({ outcome: "helped", lang: input.lang, reason: "not_in_guide" });
+      return { taskId: (await save(store, task)).id, state: task.state, say: say(NOT_IN_GUIDE, input.lang) };
+    }
+    const help = deps.help ?? ((args) => answerFromKnowledge(args));
+    try {
+      const answer = await help({
+        question: input.text,
+        guide: guide.map((g) => ({ title: g.title, body: g.body })),
+        lang: input.lang,
+      });
+      recordTurnMetric({ outcome: "helped", lang: input.lang });
+      return { taskId: (await save(store, task)).id, state: task.state, say: answer };
+    } catch (err) {
+      const kind = err instanceof GroqError ? err.kind : "http";
+      recordTurnMetric({ outcome: "failed", lang: input.lang, reason: kind });
+      return { taskId: (await save(store, task)).id, state: task.state, say: say(BUSY_OR_SORRY[kind], input.lang) };
+    }
   }
 
   if (understood.kind === "clarify") {

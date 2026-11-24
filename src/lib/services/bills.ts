@@ -159,7 +159,7 @@ async function checkDailyBillLimit(tx: Tx, businessId: string, maxBillsPerDay: n
   return null;
 }
 
-function buildLetterhead(business: Business, bankAccount: BankAccount | null): BillLetterhead {
+export function buildLetterhead(business: Business, bankAccount: BankAccount | null): BillLetterhead {
   return {
     businessName: business.name,
     ownerName: business.ownerName,
@@ -501,7 +501,7 @@ export async function createBill(
           create: lines.map((l) => ({
             excavatorId: l.session.excavatorId,
             workSessionId: l.session.id,
-            siteName: l.session.site.name,
+            siteName: input.siteName || l.session.site.name,
             attachment: input.attachment || null,
             fromDate: l.session.startDate,
             toDate: l.session.endDate ?? l.session.startDate,

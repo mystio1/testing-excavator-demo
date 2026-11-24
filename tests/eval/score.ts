@@ -80,8 +80,9 @@ export function score(testCase: EvalCase, answer: AgentResponse): Scored {
   const { expect: want } = testCase;
 
   const kind = want.kind ?? (want.workflowId ? "action" : undefined);
-  if (kind && answer.kind !== kind) {
-    failures.push({ kind: "workflow", detail: `expected ${kind}, got ${answer.kind}` });
+  const allowed = kind === undefined ? [] : Array.isArray(kind) ? kind : [kind];
+  if (allowed.length > 0 && !allowed.includes(answer.kind)) {
+    failures.push({ kind: "workflow", detail: `expected ${allowed.join(" or ")}, got ${answer.kind}` });
   }
 
   if (want.workflowId) {
@@ -111,7 +112,13 @@ export function score(testCase: EvalCase, answer: AgentResponse): Scored {
 
   if (want.mentions?.length) {
     const said = (
-      answer.kind === "reply" ? answer.message : answer.kind === "clarify" ? answer.question : ""
+      answer.kind === "reply"
+        ? answer.message
+        : answer.kind === "clarify"
+          ? answer.question
+          : answer.kind === "help"
+            ? answer.topic
+            : ""
     ).toLowerCase();
     if (!want.mentions.some((m) => said.includes(m.toLowerCase()))) {
       failures.push({ kind: "mention", detail: `said none of: ${want.mentions.join(", ")}` });

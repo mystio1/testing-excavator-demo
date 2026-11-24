@@ -38,6 +38,8 @@ export const generateBillSchema = z
     customerId: z.string().min(1),
     workSessionIds: z.array(z.string().min(1)).min(1, "Select at least one work record").max(MAX_BILL_ROWS, `A bill can have at most ${MAX_BILL_ROWS} rows`),
     attachment: z.string().trim().optional(),
+    /** Site name to print on every line; blank = each work record's own site. */
+    siteName: z.string().trim().max(200, "Site name is too long").optional(),
     billDate: dateField(),
     ratePerHour: money("Must be 0 or more"),
     transportCharges: money().default(0),

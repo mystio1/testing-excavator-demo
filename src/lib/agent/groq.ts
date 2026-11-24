@@ -154,6 +154,7 @@ export function buildSystemPrompt(lang: AgentLang): string {
     '{"kind":"action","workflowId":"<one id from the list>","fields":{...}}',
     '{"kind":"clarify","field":"<field name>","question":"<short question>"}',
     '{"kind":"reply","message":"<short answer>"}',
+    '{"kind":"help","topic":"<their question, restated as a short plain-English question>"}',
     "",
     // One worked example, because the plural case was refused outright until
     // the model was shown it. "chalu karo" on a machine is starting its JOB.
@@ -166,7 +167,15 @@ export function buildSystemPrompt(lang: AgentLang): string {
     // turn and is almost the entire token cost of one — but no rule has been
     // dropped for brevity, and the eval is what proves a trim cost no accuracy.
     "- Use the field names listed exactly. Never rename or invent one.",
-    "- Never invent a capability id. If the app cannot do it, use kind=reply and say so.",
+    "- Never invent a capability id.",
+    // Without this the model either refused ("I can't do that") or answered
+    // from imagination about an app it has never seen. The guide it is routed
+    // to is written from the app itself — see knowledge.ts.
+    "- Questions ABOUT the app — how something works, what a figure or word means, why a",
+    "  number looks wrong, how to do something by hand — and any business task not in the",
+    "  list above (making a bill, recording a service or payment by hand): kind=help, with",
+    "  topic = the question in plain English. NEVER answer these yourself, never refuse them.",
+    "- kind=reply only for greetings, thanks, and things unrelated to running the business.",
     // Seen in testing: it offered "business.dashboard.view" to the owner by
     // name. These ids are plumbing and mean nothing to the person reading.
     "- Never say an id aloud; describe it in ordinary words.",
@@ -220,7 +229,89 @@ export function buildSystemPrompt(lang: AgentLang): string {
     // with no fields, and the app asks which machine.
     '"kaam shuru karo" -> {"kind":"action","workflowId":"work.start","fields":{}}',
     '"aaj JCB 8 ghante chali, 40 litre diesel" -> {"kind":"clarify","field":"endHourMeter","question":"Kaam ke baad meter kitna tha?"}',
+    '"bill kaise banate hai?" -> {"kind":"help","topic":"How do I generate a bill for a customer?"}',
+    '"Shree Constructions ka bill banao" -> {"kind":"help","topic":"How do I make a bill for a customer?"}',
+    '"पेंडिंग इतना जास्त का दिसतंय?" -> {"kind":"help","topic":"Why is the customer pending amount so high?"}',
   ].join("\n");
+}
+
+/**
+ * Answer a question about the app from the guide, and only from the guide.
+ *
+ * The entries are the app's own documentation (knowledge.ts), so unlike the
+ * screen text they are trusted — but the model still sees ONLY them. A small,
+ * fast model asked about "the bills screen" with nothing in front of it will
+ * describe a bills screen, fluently and wrongly; given the entry, it restates
+ * it. The question is the owner's words and is kept out of the guide block so
+ * it cannot pose as part of it.
+ */
+export async function answerFromKnowledge(
+  input: { question: string; guide: { title: string; body: string }[]; lang: AgentLang },
+  deps: { apiKey?: string; fetchImpl?: typeof fetch; timeoutMs?: number; onUsage?: UsageSink; model?: string } = {},
+): Promise<string> {
+  const apiKey = deps.apiKey ?? process.env.GROQ_API_KEY;
+  if (!apiKey) throw new GroqError("GROQ_API_KEY is not set on the server", "no_key");
+  const model = deps.model ?? GROQ_MODEL;
+
+  const system = [
+    "You explain the owner's excavator-business app to them.",
+    `Answer in ${LANG_NAME[input.lang]}, in at most four short sentences that read well aloud.`,
+    "Use ONLY the facts between <guide> and </guide>. Never add a screen, button, number,",
+    "rule or feature that is not written there, and never guess.",
+    "If the guide does not answer the question, say plainly that you do not know that part.",
+    "If the guide says the app cannot do something, say so plainly.",
+    "Keep the screen and button names exactly as written in the guide, in English.",
+    "No headings, no markdown, no lists of more than four steps.",
+  ].join("\n");
+
+  const guide = input.guide.map((g) => `## ${g.title}\n${g.body}`).join("\n\n");
+
+  const doFetch = deps.fetchImpl ?? fetch;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? SUMMARY_MS);
+
+  try {
+    const res = await doFetch(GROQ_URL, {
+      method: "POST",
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        temperature: 0.1,
+        messages: [
+          { role: "system", content: system },
+          {
+            role: "user",
+            content: `<guide>\n${guide}\n</guide>\n\nQuestion: ${sanitizeGuideQuestion(input.question)}`,
+          },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      logger.error("groq.help_failed", undefined, { status: res.status, model });
+      if (res.status === 429) throw new GroqError("Too many requests just now", "rate_limited");
+      throw new GroqError(`Assistant service returned ${res.status}`, "http");
+    }
+    const body = (await res.json()) as ChatCompletion;
+    if (body.usage?.total_tokens) deps.onUsage?.({ tokens: body.usage.total_tokens, model });
+    const text = body.choices?.[0]?.message?.content?.trim();
+    if (!text) throw new GroqError("Assistant sent an empty answer", "malformed");
+    // Some open models emit their reasoning in <think> tags; never speak that.
+    return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim() || text;
+  } catch (err) {
+    if (err instanceof GroqError) throw err;
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new GroqError("The assistant took too long", "timeout");
+    }
+    throw new GroqError("Could not reach the assistant service", "http");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The owner's question must not be able to close the guide block. */
+function sanitizeGuideQuestion(text: string): string {
+  return text.replace(/<\/?guide>/gi, " ").slice(0, 500);
 }
 
 export type GroqTurn = { role: "user" | "assistant"; content: string };

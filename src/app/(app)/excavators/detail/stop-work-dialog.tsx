@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api-client";
 import { useApiForm } from "@/lib/use-api-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HoursWorkedPreview } from "@/components/hours-worked-preview";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -22,6 +23,7 @@ export function StopWorkDialog({
   workSessionId,
   version,
   currentHourMeter,
+  startHourMeter,
   startDate,
 }: {
   excavatorId: string;
@@ -29,6 +31,9 @@ export function StopWorkDialog({
   /** The job's version as loaded: stopping a job someone else just changed is a conflict. */
   version?: number;
   currentHourMeter: number;
+  /** The job's starting reading, when total hours = final - start (no approved daily
+   * logs; with logs the total is their sum, so no preview is shown). */
+  startHourMeter?: number;
   /** The day the job started — most work is stopped on the day it began, and
    * a job entered days later must not be dated today by accident. */
   startDate: Date | string;
@@ -37,6 +42,7 @@ export function StopWorkDialog({
   // Work dates are stored as the UTC midnight of the chosen day.
   const startDateValue = new Date(startDate).toISOString().slice(0, 10);
   const [open, setOpen] = useState(false);
+  const [endReading, setEndReading] = useState(String(currentHourMeter));
   const { error, pending, run } = useApiForm(async (body: Record<string, unknown>) => {
     await apiFetch(`/api/excavators/${excavatorId}/stop-work`, { method: "POST", body: JSON.stringify(body) });
   });
@@ -62,6 +68,7 @@ export function StopWorkDialog({
   }
 
   function handleOpenChange(v: boolean) {
+    if (v) setEndReading(String(currentHourMeter));
     setOpen(v);
   }
 
@@ -114,10 +121,19 @@ export function StopWorkDialog({
               type="number"
               step="0.1"
               min="0"
-              defaultValue={currentHourMeter}
+              value={endReading}
+              onChange={(e) => setEndReading(e.target.value)}
               required
               className="h-12 text-base"
             />
+            {startHourMeter != null && (
+              <HoursWorkedPreview
+                startHourMeter={startHourMeter}
+                endHourMeter={endReading}
+                label="Total hours worked"
+                invalidText="Final reading must be more than the starting reading."
+              />
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

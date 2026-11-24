@@ -9,7 +9,7 @@ import type { CreateSiteInput, UpdateSiteInput, UpdateSiteRatesInput } from "@/l
 export async function listSiteOptions(businessId: string) {
   return db.site.findMany({
     where: { businessId },
-    select: { id: true, name: true, customerId: true },
+    select: { id: true, name: true, customerId: true, status: true, bucketRate: true, breakerRate: true },
     orderBy: { name: "asc" },
   });
 }

@@ -33,3 +33,13 @@ export const setExcavatorSiteSchema = z.object({
 });
 
 export type SetExcavatorSiteInput = z.infer<typeof setExcavatorSiteSchema>;
+
+/** GET /api/excavators/performance?period=day|week|month|year&today=yyyy-MM-dd */
+export const machineEarningsQuerySchema = z.object({
+  period: z.enum(["day", "week", "month", "year"]).default("month"),
+  today: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "today must be yyyy-MM-dd")
+    .refine((v) => !Number.isNaN(Date.parse(v)), "Enter a valid date")
+    .optional(),
+});

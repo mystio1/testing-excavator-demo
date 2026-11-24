@@ -30,6 +30,9 @@ export type TurnOutcome =
   | "asked"
   /** Out of scope, or small talk. */
   | "replied"
+  /** A question about the app, answered from the guide (or "not in the guide",
+   * with reason "not_in_guide"). */
+  | "helped"
   /** The owner approved a write. */
   | "approved"
   /** The app's own screen confirmed the record. */

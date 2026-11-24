@@ -3,7 +3,7 @@
 import Link from "next/link";
 import useSWR from "swr";
 import { Plus, Truck } from "lucide-react";
-import type { getMachinePerformanceSummary, listExcavators } from "@/lib/services/excavators";
+import type { listExcavators } from "@/lib/services/excavators";
 import { swrFetcher } from "@/lib/api-client";
 import type { Plain } from "@/lib/plain";
 import { PageHeader } from "@/components/page-header";
@@ -16,14 +16,13 @@ import Loading from "../loading";
 
 type ExcavatorsData = {
   excavators: Plain<Awaited<ReturnType<typeof listExcavators>>>;
-  machinePerformance: Plain<Awaited<ReturnType<typeof getMachinePerformanceSummary>>>;
 };
 
 export default function ExcavatorsPage() {
   const { data } = useSWR<ExcavatorsData>("/api/excavators", swrFetcher, { dedupingInterval: 15_000 });
 
   if (!data) return <Loading />;
-  const { excavators, machinePerformance } = data;
+  const { excavators } = data;
 
   return (
     <div>
@@ -57,7 +56,7 @@ export default function ExcavatorsPage() {
             <div className="flex justify-end">
               <ReorderMachines key={excavators.map((e) => e.id).join(",")} machines={excavators} />
             </div>
-            <MachinePerformanceList machines={machinePerformance} />
+            <MachinePerformanceList />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {excavators.map((ex) => (
                 <MachineCard key={ex.id} excavator={ex} />

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { useState } from "react";
-import { CalendarDays, ChevronDown, ChevronUp, Clock, FileText, Pencil, Truck } from "lucide-react";
+import { AlertTriangle, CalendarDays, ChevronDown, ChevronUp, Clock, FileText, Pencil, Truck } from "lucide-react";
 import type { getCustomerDetail } from "@/lib/services/customers";
 import type { Plain } from "@/lib/plain";
 import { swrFetcher } from "@/lib/api-client";
@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/native-select";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatCurrencyCompact } from "@/lib/utils/currency";
+import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/currency";
 import { formatDate, formatDateRange } from "@/lib/utils/dates";
 import { formatHours } from "@/lib/utils/hours";
 import { StatusBadge } from "@/components/status-badge";
@@ -144,6 +144,9 @@ export default function CustomerDetailPage() {
     totalHours,
     totalRevenue,
     pending,
+    billedAmount,
+    unbilledAmount,
+    unbilledWork,
     machineOptions,
     siteOptions,
     machineHistory,
@@ -202,6 +205,10 @@ export default function CustomerDetailPage() {
           <SummaryCard icon={CalendarDays} label="Working Days" value={totalWorkingDays} />
           <SummaryCard icon={Clock} label="Total Hours" value={formatHours(totalHours)} />
         </div>
+
+        {unbilledWork.length > 0 && (
+          <SiteWiseAmount work={unbilledWork} billedAmount={billedAmount} unbilledAmount={unbilledAmount} />
+        )}
 
         <div className="flex flex-col gap-3">
           <p className="text-sm font-semibold text-muted-foreground">Machine History</p>
@@ -277,5 +284,79 @@ export default function CustomerDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+const WORK_LABEL = { BUCKET: "Bucket", BREAKER: "Breaker", OTHER: "Other / Chaining" } as const;
+
+/** How the unbilled part of this customer's total is made up: hours x rate, site by site. */
+function SiteWiseAmount({
+  work,
+  billedAmount,
+  unbilledAmount,
+}: {
+  work: CustomerDetail["unbilledWork"];
+  billedAmount: number;
+  unbilledAmount: number;
+}) {
+  const sites = [...new Map(work.map((w) => [w.siteId, w.siteName])).entries()];
+  const missing = work.filter((w) => w.workType !== "OTHER" && w.rate == null);
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="font-bold">Work Not Billed Yet — Site Wise</p>
+          <p className="text-sm text-muted-foreground">
+            Billed {formatCurrency(billedAmount)} + Not billed {formatCurrency(unbilledAmount)}
+          </p>
+        </div>
+
+        {missing.length > 0 && (
+          <div role="alert" className="flex gap-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <p>
+              Rate not set for{" "}
+              {[...new Map(missing.map((m) => [m.siteId, m])).values()].map((m, i) => (
+                <span key={m.siteId}>
+                  {i > 0 && ", "}
+                  <Link href={`/site-analysis/detail?id=${encodeURIComponent(m.siteId)}`} className="font-semibold underline">
+                    {m.siteName}
+                  </Link>
+                </span>
+              ))}
+              . That work is counted as ₹0 — update the site rate to get the correct pending amount.
+            </p>
+          </div>
+        )}
+
+        {sites.map(([siteId, siteName]) => {
+          const rows = work.filter((w) => w.siteId === siteId);
+          const siteTotal = rows.reduce((a, r) => a + r.amount, 0);
+          return (
+            <div key={siteId} className="flex flex-col gap-1 border-t pt-3 first-of-type:border-t-0 first-of-type:pt-0">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="font-semibold">{siteName}</p>
+                <p className="font-bold">{formatCurrency(Math.round(siteTotal * 100) / 100)}</p>
+              </div>
+              {rows.map((r) => (
+                <div key={r.workType} className="flex items-baseline justify-between gap-2 text-sm">
+                  <span className="text-muted-foreground">
+                    {WORK_LABEL[r.workType]}: {formatHours(r.hours)} ×{" "}
+                    {r.rate != null ? (
+                      `${formatCurrency(r.rate)}/hr`
+                    ) : r.workType === "OTHER" ? (
+                      "not priced"
+                    ) : (
+                      <span className="font-semibold text-amber-700 dark:text-amber-400">rate not set</span>
+                    )}
+                  </span>
+                  <span className="tabular-nums">{formatCurrency(r.amount)}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }

@@ -89,7 +89,7 @@ export default function DashboardPage() {
       {/* Critical KPIs */}
       <div
         data-agent-id="dashboard-cards"
-        className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6"
+        className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3"
       >
         <Link href="/customers" className="block">
           <SummaryCard icon={Users} label="Total Customers" value={cards.totalCustomers} accent="default" />

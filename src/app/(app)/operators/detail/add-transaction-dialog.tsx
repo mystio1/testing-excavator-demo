@@ -51,12 +51,18 @@ export function AddTransactionDialog({
     }
   });
 
+  // The trigger opens a blank form; the Quick add chip opens it pre-filled.
+  // Both go through here so the amount is set in the same update as `open` —
+  // resetting it on every open used to wipe the quick amount straight away.
+  function openWith(amount: number | null) {
+    setIdempotencyKey(newIdempotencyKey());
+    setQuickAmount(amount);
+    setOpen(true);
+  }
+
   function onOpenChange(next: boolean) {
-    if (next) {
-      setIdempotencyKey(newIdempotencyKey());
-      setQuickAmount(null);
-    }
-    setOpen(next);
+    if (next) openWith(null);
+    else setOpen(false);
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -116,8 +122,7 @@ export function AddTransactionDialog({
         <button
           type="button"
           onClick={() => {
-            setQuickAmount(suggestedAmount!);
-            onOpenChange(true);
+            openWith(suggestedAmount!);
           }}
           className="flex items-center gap-1.5 self-start rounded-full border border-primary/30 bg-primary/5 px-3 py-1.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
         >

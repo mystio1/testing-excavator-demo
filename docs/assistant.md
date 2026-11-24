@@ -193,6 +193,59 @@ alive. Numbers live in one place (`quota.ts`) and are env-overridable, because
 the right values depend on the account's tier, which changes and is not
 discoverable from the code. See `.env.example`.
 
+## Questions about the app itself
+
+The router model is told which capabilities exist and nothing else about the
+app. Asked "bill kaise banate hai?", "why is pending so high?" or "how is
+profit calculated?", it could only refuse — or describe, fluently, a screen it
+has never seen. Those questions now go to a guide.
+
+```
+ "पेंडिंग इतके जास्त का दाखवते?"
+        │
+ askGroq ──► {"kind":"help","topic":"Why is the customer pending amount so high?"}
+        │     (the model restates the question in English; it never answers it)
+        ▼
+ relevantKnowledge([topic, owner's own words])      knowledge.ts
+        │  BM25 over ~50 short entries; title/keywords weighted ×3;
+        │  both scripts folded the same way (script.ts comparable)
+        │  best score < MIN_SCORE → "I don't have that in the app guide" (no model call)
+        ▼
+ answerFromKnowledge(question, top ≤3 entries)      groq.ts
+        │  "Use ONLY the facts between <guide> and </guide>…"
+        ▼
+ spoken answer, in the owner's language
+```
+
+Why it is built this way:
+
+- **Grounding over training.** No model is fine-tuned on the app. A small,
+  fast model with the right paragraph in front of it restates it; the same
+  model with nothing in front of it invents. The guide is the only source of
+  facts, and the answer prompt says so.
+- **Keyword retrieval, no vector index.** About fifty entries a person can
+  read in a few minutes. Embeddings would add a service, a per-query cost and a
+  second model to keep in step, to rank a list that small. The quality lever is
+  the query instead: the router hands over an **English restatement** — the
+  "translate the code-mixed query first" approach that does best for Hinglish
+  retrieval — and the owner's original words are searched alongside it.
+- **A confidence gate.** Below `MIN_SCORE` the answer is "not in the guide",
+  without asking a model to make something up. Unrelated questions (weather,
+  cricket, jokes) are pinned under the gate by `tests/agent/knowledge.test.ts`,
+  along with 41 real owner questions in four scripts that must find their entry.
+- **Tasks it cannot do by voice become instructions.** "Shree Constructions ka
+  bill banao" used to end in "I can't do that"; it now gets the steps.
+
+**Keeping it true.** The guide (`src/lib/agent/knowledge.ts`) is written from
+the functional audit (`excavator-manager/docs/excavator-functional-audit/`) and
+re-checked against **this** build. This build has no Expenses page, no diesel
+price setting and no bill-template choice, profit is "this month's bills minus
+service cost and salary", and sites have three statuses; the guide says so, and
+a test fails if an entry describes those features as present. **When a screen,
+button, rule or formula changes, change its entry in the same commit** — an
+out-of-date sentence there is a wrong answer read aloud to someone who cannot
+check it.
+
 ## When it cannot answer
 
 Three things, in order of how often they matter:

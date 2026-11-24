@@ -158,10 +158,26 @@ export const replySchema = z
   })
   .strict();
 
+/**
+ * A question about the app itself — how something works, what a figure means,
+ * how to do something by hand. The model does NOT answer it: it only restates
+ * the question in plain English (`topic`), which is what the knowledge guide
+ * is searched with (see knowledge.ts). The answer is then written from the
+ * guide's own text, so a model that has never seen this app cannot describe a
+ * menu that does not exist.
+ */
+export const helpSchema = z
+  .object({
+    kind: z.literal("help"),
+    topic: z.string().min(1).max(300),
+  })
+  .strict();
+
 export const agentResponseSchema = z.discriminatedUnion("kind", [
   proposedActionSchema,
   clarificationSchema,
   replySchema,
+  helpSchema,
 ]);
 
 export type ProposedAction = z.infer<typeof proposedActionSchema>;

@@ -94,6 +94,8 @@ const en: Dict = {
   "endWork.title": "End Work",
   "endWork.endingHourMeter": "Ending Hour Meter",
   "endWork.help": "Your admin will review this reading and approve it before it's final.",
+  "endWork.totalHours": "Total hours worked",
+  "endWork.endBelowStart": "Ending reading must be more than the starting reading.",
   "endWork.submitting": "Submitting...",
   "endWork.submit": "Submit for Approval",
 
@@ -229,6 +231,8 @@ const hi: Dict = {
   "endWork.title": "काम खत्म करें",
   "endWork.endingHourMeter": "आखिरी ऑवर मीटर",
   "endWork.help": "एडमिन इस रीडिंग को देखकर मंज़ूर करेंगे, तभी यह पक्की मानी जाएगी।",
+  "endWork.totalHours": "कुल काम के घंटे",
+  "endWork.endBelowStart": "आखिरी रीडिंग शुरुआती रीडिंग से ज़्यादा होनी चाहिए।",
   "endWork.submitting": "भेजा जा रहा है...",
   "endWork.submit": "मंज़ूरी के लिए भेजें",
 
@@ -364,6 +368,8 @@ const mr: Dict = {
   "endWork.title": "काम संपवा",
   "endWork.endingHourMeter": "शेवटचे अवर मीटर",
   "endWork.help": "ऍडमिन ही रीडिंग तपासून मंजूर करतील, तेव्हाच ती अंतिम मानली जाईल.",
+  "endWork.totalHours": "एकूण कामाचे तास",
+  "endWork.endBelowStart": "शेवटचे रीडिंग सुरुवातीच्या रीडिंगपेक्षा जास्त असले पाहिजे.",
   "endWork.submitting": "पाठवत आहे...",
   "endWork.submit": "मंजुरीसाठी पाठवा",
 

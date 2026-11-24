@@ -5,6 +5,7 @@ import { recordAudit, type AuditActor } from "@/lib/audit";
 import { dec, round2, sum } from "@/lib/money";
 import { LEGACY_LIMIT, pageArgs, toPage, type PageParams } from "@/lib/pagination";
 import { billTotalsByCustomer, sumBills } from "@/lib/services/financials";
+import { getCustomerUnbilledWork, getUnbilledByCustomer } from "@/lib/services/siteAnalysis";
 import { isStale, resourceModified, withTx, type Tx } from "@/lib/tx";
 import type { AddCustomerInput } from "@/lib/validation/customer";
 
@@ -68,20 +69,18 @@ export async function listCustomers(
   });
   const { items, nextCursor } = toPage(rows, page.limit);
 
-  const [pageTotals, summary] = await Promise.all([
-    items.length === 0
-      ? Promise.resolve([])
-      : billTotalsByCustomer(
-          businessId,
-          items.map((c) => c.id),
-        ),
+  const ids = items.map((c) => c.id);
+  const [pageTotals, unbilled, summary] = await Promise.all([
+    items.length === 0 ? Promise.resolve([]) : billTotalsByCustomer(businessId, ids),
+    getUnbilledByCustomer(businessId, ids),
     page.cursor ? Promise.resolve(null) : getCustomerListSummary(businessId, where),
   ]);
   const totalsByCustomer = new Map(pageTotals.map((t) => [t.customerId, t._sum]));
 
   const customers = items.map((c) => {
     const totals = totalsByCustomer.get(c.id);
-    const billed = dec(totals?.totalAmount);
+    // Bills + recorded work not billed yet (hours x site rate), as Site Analysis counts it.
+    const billed = dec(totals?.totalAmount).plus(unbilled.get(c.id) ?? 0);
     return {
       id: c.id,
       name: c.name,
@@ -102,20 +101,28 @@ async function getCustomerListSummary(
   businessId: string,
   where: Prisma.CustomerWhereInput,
 ): Promise<CustomerListSummary> {
-  const [totalCustomers, perCustomer] = await Promise.all([
-    db.customer.count({ where }),
+  const [matching, perCustomer, unbilled] = await Promise.all([
+    db.customer.findMany({ where, select: { id: true } }),
     db.bill.groupBy({
       by: ["customerId"],
       where: { businessId, customer: where },
       _sum: { totalAmount: true, paidAmount: true },
     }),
+    getUnbilledByCustomer(businessId),
   ]);
+  const totalCustomers = matching.length;
 
-  const billed = sum(perCustomer.map((c) => c._sum.totalAmount));
-  const paid = sum(perCustomer.map((c) => c._sum.paidAmount));
-  const withPendingDues = perCustomer.filter(
-    (c) => round2(dec(c._sum.totalAmount).minus(dec(c._sum.paidAmount))).toNumber() > 0.01,
-  ).length;
+  // Per customer: billed + unbilled work value, and what has been paid.
+  const owed = new Map<string, { total: ReturnType<typeof dec>; paid: ReturnType<typeof dec> }>();
+  for (const c of matching) owed.set(c.id, { total: dec(unbilled.get(c.id) ?? 0), paid: dec(0) });
+  for (const c of perCustomer) {
+    const row = owed.get(c.customerId) ?? { total: dec(0), paid: dec(0) };
+    owed.set(c.customerId, { total: row.total.plus(dec(c._sum.totalAmount)), paid: dec(c._sum.paidAmount) });
+  }
+  const rows = [...owed.values()];
+  const billed = sum(rows.map((r) => r.total));
+  const paid = sum(rows.map((r) => r.paid));
+  const withPendingDues = rows.filter((r) => round2(r.total.minus(r.paid)).toNumber() > 0.01).length;
 
   return {
     totalCustomers,
@@ -264,8 +271,13 @@ export async function getCustomerDetail(businessId: string, id: string, filters:
   });
   if (!customer) return null;
 
-  // Same bill arithmetic as the dashboard and Site Analysis (financials.ts).
-  const { billed: totalRevenue, pending } = sumBills(customer.bills);
+  // Same bill arithmetic as the dashboard and Site Analysis (financials.ts), plus recorded work
+  // not billed yet, valued site by site at the site's rates (siteAnalysis.ts).
+  const bills = sumBills(customer.bills);
+  const unbilledWork = await getCustomerUnbilledWork(businessId, id);
+  const unbilledAmount = round2(sum(unbilledWork.map((w) => w.amount))).toNumber();
+  const totalRevenue = round2(dec(bills.billed).plus(unbilledAmount)).toNumber();
+  const pending = round2(dec(bills.pending).plus(unbilledAmount)).toNumber();
 
   const sessions = await db.workSession.findMany({
     where: { customerId: id, businessId },
@@ -302,9 +314,7 @@ export async function getCustomerDetail(businessId: string, id: string, filters:
   // FULL history — only the list below them narrows with the filters.
   const machineIds = new Set(sessions.map((s) => s.excavatorId));
   const totalHours = Math.round(sessions.reduce((acc, s) => acc + s.totalHours, 0) * 100) / 100;
-  const workingDays = new Set(
-    sessions.flatMap((s) => s.dailyLogs.map((log) => log.date.toDateString())),
-  ).size;
+  const workingDays = countWorkingDays(sessions);
   const machineOptions = [
     ...new Map(
       sessions.map((s) => [s.excavator.id, { id: s.excavator.id, name: s.excavator.name, machineNumber: s.excavator.machineNumber }]),
@@ -327,6 +337,10 @@ export async function getCustomerDetail(businessId: string, id: string, filters:
     totalHours,
     totalRevenue,
     pending,
+    billedAmount: bills.billed,
+    unbilledAmount,
+    /** Unbilled work per site and work type, with the rate applied (null = rate not set). */
+    unbilledWork,
     machineOptions,
     siteOptions,
     machineHistory: filtered.map((s) => ({
@@ -355,4 +369,37 @@ export async function getCustomerDetail(businessId: string, id: string, filters:
       dailyLogs: s.dailyLogs,
     })),
   };
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Distinct calendar days any machine worked for the customer, counted from the day the first
+ * machine started. A job with daily readings counts its reading days (rejected and 0-hour ones excluded);
+ * a job without readings (operator start/end flow) counts every day from its start date to its
+ * end date — or to today while it is still running. */
+export function countWorkingDays(
+  sessions: {
+    startDate: Date;
+    endDate: Date | null;
+    status: string;
+    dailyLogs: { date: Date; status?: string | null; hoursWorked?: number | null }[];
+  }[],
+  now = new Date(),
+) {
+  const days = new Set<string>();
+  const key = (d: Date) => d.toISOString().slice(0, 10);
+  for (const s of sessions) {
+    // Rejected readings and diesel-only entries (0 hours) are not working days.
+    const logs = s.dailyLogs.filter((l) => l.status !== "REJECTED" && (l.hoursWorked == null || l.hoursWorked > 0));
+    if (logs.length) {
+      for (const l of logs) days.add(key(l.date));
+      continue;
+    }
+    const start = Date.UTC(s.startDate.getUTCFullYear(), s.startDate.getUTCMonth(), s.startDate.getUTCDate());
+    const endRef = s.endDate ?? (s.status === "ACTIVE" ? now : s.startDate);
+    const end = Date.UTC(endRef.getUTCFullYear(), endRef.getUTCMonth(), endRef.getUTCDate());
+    // Guarded: a bad end date before the start counts the start day only; cap a runaway span.
+    for (let t = start, n = 0; t <= Math.max(start, end) && n < 3660; t += DAY_MS, n++) days.add(key(new Date(t)));
+  }
+  return days.size;
 }

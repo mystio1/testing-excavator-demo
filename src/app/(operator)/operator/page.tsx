@@ -303,6 +303,7 @@ export default function OperatorHomePage() {
                   <div className="flex-1">
                     <EndWorkDialog
                       requestId={req.id}
+                      startHourMeter={req.startHourMeter}
                       currentHourMeter={excavator.currentHourMeter}
                       startDate={req.startDate}
                       attachment={req.attachment}
@@ -314,6 +315,7 @@ export default function OperatorHomePage() {
                   <div className="flex-1">
                     <EndWorkDialog
                       requestId={req.id}
+                      startHourMeter={req.startHourMeter}
                       currentHourMeter={req.endHourMeter ?? excavator.currentHourMeter}
                       startDate={req.startDate}
                       endDate={req.endDate}

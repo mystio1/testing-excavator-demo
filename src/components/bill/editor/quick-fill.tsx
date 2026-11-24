@@ -9,24 +9,38 @@ import { NativeSelect } from "@/components/native-select";
 import { todayIso } from "./bill-math";
 import { ChoiceChip, Field, FormAlert, SITE_LIST_ID, TOOL_OPTIONS } from "./form-parts";
 import type { BillFormOptions, QuickFillParams } from "./types";
+import { siteRateFor, type SiteOption } from "../site-defaults";
 
 /** Generates rows for several machines over a date range in one go. The inputs
  * are scratch values of this panel only; `onAdd` appends the rows and returns an
  * error message when the request is not valid. */
 export function QuickFill({
   excavators,
+  sites = [],
+  defaultSite,
   onAdd,
 }: {
   excavators: BillFormOptions["excavators"];
+  sites?: SiteOption[];
+  /** The chosen customer's site: pre-fills Site and its saved rate (both editable). */
+  defaultSite?: SiteOption;
   onAdd: (params: QuickFillParams) => string | null;
 }) {
   const [machineIds, setMachineIds] = useState<string[]>([]);
   const [from, setFrom] = useState(todayIso);
   const [to, setTo] = useState(todayIso);
   const [hours, setHours] = useState("8");
-  const [rate, setRate] = useState("");
-  const [site, setSite] = useState("");
-  const [attachment, setAttachment] = useState("");
+  const initialTool = defaultSite?.bucketRate ? "Bucket" : defaultSite?.breakerRate ? "Breaker" : "";
+  const [rate, setRate] = useState(() => String(siteRateFor(defaultSite, initialTool) ?? ""));
+  const [site, setSite] = useState(defaultSite?.name ?? "");
+  const [attachment, setAttachment] = useState(initialTool);
+  const siteNamed = (name: string) => sites.find((s) => s.name.trim().toLowerCase() === name.trim().toLowerCase());
+  /** Follow the site's saved rate when site or tool changes, unless a rate of their own was typed. */
+  const retarget = (nextSite: string, nextTool: string) => {
+    const before = siteRateFor(siteNamed(site), attachment);
+    const after = siteRateFor(siteNamed(nextSite), nextTool);
+    if (after != null && (!rate || Number(rate) === before)) setRate(String(after));
+  };
   const [perDay, setPerDay] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const machinesLabelId = useId();
@@ -125,7 +139,10 @@ export function QuickFill({
                 <NativeSelect
                   id={id}
                   value={attachment}
-                  onChange={(e) => setAttachment(e.target.value)}
+                  onChange={(e) => {
+                    retarget(site, e.target.value);
+                    setAttachment(e.target.value);
+                  }}
                   className="h-11 min-w-0"
                 >
                   <option value="">None</option>
@@ -138,7 +155,10 @@ export function QuickFill({
               )}
             </Field>
             <Field label="Site (blank = machine’s site)" className="col-span-2">
-              {(id) => <Input id={id} list={SITE_LIST_ID} value={site} onChange={(e) => setSite(e.target.value)} className="h-11" />}
+              {(id) => <Input id={id} list={SITE_LIST_ID} value={site} onChange={(e) => {
+                    retarget(e.target.value, attachment);
+                    setSite(e.target.value);
+                  }} className="h-11" />}
             </Field>
           </div>
         </div>

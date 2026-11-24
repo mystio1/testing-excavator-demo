@@ -131,12 +131,15 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
           <CardContent className="flex flex-col gap-1">
             <div className="flex items-start justify-between gap-2">
               <p className="font-bold">{session.customer.name}</p>
-              <div className="flex items-center gap-1">
-                {session.status === "ACTIVE" && <StatusBadge status="WORKING" />}
-                <EditSessionButton
-                  session={session}
-                  invalidateKey={invalidateKey}
-                />
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1">
+                  {session.status === "ACTIVE" && <StatusBadge status="WORKING" />}
+                  <EditSessionButton
+                    session={session}
+                    invalidateKey={invalidateKey}
+                  />
+                </div>
+                <ToolTag tool={sessionTool(session)} />
               </div>
             </div>
             <p className="text-sm text-muted-foreground">{session.site.name}</p>
@@ -186,6 +189,7 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
                         </>
                       ) : (
                         <>
+                          {log.attachment && <ToolTag tool={log.attachment} small />}
                           <span className="text-xs font-semibold">{formatHours(log.hoursWorked)}</span>
                           <EditReadingButton
                             log={log}
@@ -213,5 +217,25 @@ export function WorkHistoryTab({ excavatorId }: { excavatorId: string }) {
         </Button>
       )}
     </div>
+  );
+}
+
+/** The tool a record was worked with: the job's own, else the tools its readings name. */
+function sessionTool(session: { attachment: string | null; dailyLogs: { attachment: string | null; kind?: string }[] }) {
+  if (session.attachment) return session.attachment;
+  const tools = [...new Set(session.dailyLogs.map((l) => l.attachment).filter((t): t is string => !!t))];
+  return tools.length ? tools.join(", ") : null;
+}
+
+function ToolTag({ tool, small }: { tool: string | null; small?: boolean }) {
+  return (
+    <span
+      className={
+        "rounded-md border border-amber-300 bg-amber-100 font-semibold text-amber-900 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-200 " +
+        (small ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-0.5 text-xs")
+      }
+    >
+      {small ? tool : `Tool: ${tool ?? "Not set"}`}
+    </span>
   );
 }

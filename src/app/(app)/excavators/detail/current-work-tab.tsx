@@ -246,6 +246,9 @@ export function CurrentWorkTab({
               workSessionId={activeWork.id}
               version={activeWork.version}
               currentHourMeter={currentHourMeter}
+              startHourMeter={
+                activeWork.dailyLogs.some((l) => l.status === "APPROVED") ? undefined : activeWork.startHourMeter
+              }
               startDate={activeWork.startDate}
             />
           </div>

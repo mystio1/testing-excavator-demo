@@ -101,7 +101,7 @@ function entriesCte(scope: Scope): Prisma.Sql {
   return Prisma.sql`
     WITH base AS (
       SELECT l.id AS "entryId", 'LOG'::text AS src, s.id AS "sessionId", s."siteId", s."excavatorId", s."operatorId",
-             l."operatorName" AS "operatorLabel", l.date AS date,
+             s."customerId", l."operatorName" AS "operatorLabel", l.date AS date,
              l."startHourMeter" AS "startMeter", l."endHourMeter" AS "endMeter",
              (CASE WHEN l.kind = 'DIESEL_ONLY' THEN 0 ELSE round(l."hoursWorked"::numeric, 2) END) AS hours,
              l.attachment AS attachment,
@@ -115,7 +115,7 @@ function entriesCte(scope: Scope): Prisma.Sql {
       WHERE s."businessId" = ${b} AND st."businessId" = ${b} AND l.status = 'APPROVED' ${siteCond} ${machineCond}
       UNION ALL
       SELECT s.id, 'SESSION'::text, s.id, s."siteId", s."excavatorId", s."operatorId",
-             NULL, s."startDate", s."startHourMeter", s."endHourMeter",
+             s."customerId", NULL, s."startDate", s."startHourMeter", s."endHourMeter",
              round(s."totalHours"::numeric, 2), s.attachment,
              round(COALESCE(s."dieselLiters", 0)::numeric, 2), s."remainingDieselLiters", s."createdAt", s.notes
       FROM "WorkSession" s
@@ -146,7 +146,17 @@ function entriesCte(scope: Scope): Prisma.Sql {
                 CASE e.wtype
                   WHEN 'BUCKET' THEN (CASE WHEN r.id IS NULL THEN st."bucketRate" ELSE r."bucketRate" END)
                   WHEN 'BREAKER' THEN (CASE WHEN r.id IS NULL THEN st."breakerRate" ELSE r."breakerRate" END)
-                  ELSE 0 END, 0)) AS uv
+                  ELSE 0 END, 0)) AS uv,
+             (CASE e.wtype
+                WHEN 'BUCKET' THEN (CASE WHEN r.id IS NULL THEN st."bucketRate" ELSE r."bucketRate" END)
+                WHEN 'BREAKER' THEN (CASE WHEN r.id IS NULL THEN st."breakerRate" ELSE r."breakerRate" END)
+                END) AS rate,
+             -- unbilled Bucket / Breaker work at a site with no rate for that type yet: valued at 0
+             -- until the site's rate is entered (Machine Performance asks for it)
+             (bi.id IS NULL AND e.hours > 0 AND (CASE e.wtype
+                WHEN 'BUCKET' THEN (CASE WHEN r.id IS NULL THEN st."bucketRate" ELSE r."bucketRate" END) IS NULL
+                WHEN 'BREAKER' THEN (CASE WHEN r.id IS NULL THEN st."breakerRate" ELSE r."breakerRate" END) IS NULL
+                ELSE FALSE END)) AS "rateMissing"
       FROM ent e
       JOIN "Site" st ON st.id = e."siteId"
       JOIN "Excavator" exc ON exc.id = e."excavatorId"
@@ -274,6 +284,203 @@ async function aggregateBySite(scope: Scope): Promise<Map<string, Totals>> {
     ${entriesCte(scope)}
     SELECT "siteId", ${AGG_SELECT} FROM val WHERE ${dateCond(scope)} GROUP BY "siteId"`);
   return new Map(rows.map((r) => [r.siteId as string, toTotals(r)]));
+}
+
+// ---------------------------------------------------------------------------------------------
+// MACHINE EARNINGS (Machine Performance on the excavators page): the same work entries and the same
+// valuation as everything above — billed work at its invoice share, unbilled work at the site rate
+// in force on the work date — grouped per machine into day / week / month / year periods. Direct
+// bills (no work session) are added to the period of their bill date, as they never reach the
+// entry engine. Work whose site has no rate for its type is counted at 0 and reported, so the
+// screen can ask for the rate instead of silently showing too little.
+// ---------------------------------------------------------------------------------------------
+
+export const EARNINGS_PERIODS = ["day", "week", "month", "year"] as const;
+export type EarningsPeriod = (typeof EARNINGS_PERIODS)[number];
+
+/** How many periods each view goes back, newest included. */
+const PERIOD_COUNT: Record<EarningsPeriod, number> = { day: 7, week: 8, month: 12, year: 5 };
+
+/** Start of the period containing `d` (UTC midnight dates, matching how work dates are stored).
+ * Weeks start on Monday, as Postgres date_trunc('week') does. */
+export function periodStart(d: Date, period: EarningsPeriod): Date {
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  if (period === "year") return new Date(Date.UTC(y, 0, 1));
+  if (period === "month") return new Date(Date.UTC(y, m, 1));
+  const day = new Date(Date.UTC(y, m, d.getUTCDate()));
+  if (period === "week") day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7));
+  return day;
+}
+
+function shiftPeriod(d: Date, period: EarningsPeriod, n: number): Date {
+  const x = new Date(d);
+  if (period === "year") x.setUTCFullYear(x.getUTCFullYear() + n);
+  else if (period === "month") x.setUTCMonth(x.getUTCMonth() + n);
+  else x.setUTCDate(x.getUTCDate() + n * (period === "week" ? 7 : 1));
+  return x;
+}
+
+const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+
+export type EarningsBucket = { key: string; start: string; end: string };
+export type MachineEarningsPoint = { key: string; revenue: number; hours: number; unpricedHours: number };
+
+/** `today` is the viewer's local yyyy-MM-dd (the server's clock is UTC). */
+export async function getMachineEarnings(businessId: string, period: EarningsPeriod, today: string) {
+  const anchor = periodStart(new Date(`${today}T00:00:00.000Z`), period);
+  const count = PERIOD_COUNT[period];
+  const buckets: EarningsBucket[] = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const start = shiftPeriod(anchor, period, -i);
+    const last = shiftPeriod(start, period, 1);
+    last.setUTCDate(last.getUTCDate() - 1);
+    buckets.push({ key: isoDay(start), start: isoDay(start), end: isoDay(last) });
+  }
+  const from = new Date(`${buckets[0].start}T00:00:00.000Z`);
+  const until = shiftPeriod(anchor, period, 1); // exclusive
+  const bucketOf = (d: Date) => isoDay(periodStart(d, period));
+  // date_trunc's unit is a whitelisted literal, never user text.
+  const unit = Prisma.raw(`'${period}'`);
+
+  const [machines, workRows, directBills, missingRows] = await Promise.all([
+    db.excavator.findMany({
+      where: { businessId, isArchived: false },
+      select: { id: true, name: true, machineNumber: true, status: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    }),
+    db.$queryRaw<AggRow[]>(Prisma.sql`
+      ${entriesCte({ businessId })}
+      SELECT "excavatorId", to_char(date_trunc(${unit}, date), 'YYYY-MM-DD') AS bucket,
+             COALESCE(sum(hours), 0)::float8 AS hours,
+             COALESCE(sum(revenue), 0)::text AS revenue,
+             COALESCE(sum(hours) FILTER (WHERE "rateMissing"), 0)::float8 AS "unpricedHours"
+      FROM val WHERE date >= ${from}::timestamp AND date < ${until}::timestamp
+      GROUP BY 1, 2`),
+    db.bill.findMany({
+      where: { businessId, isDirect: true, excavatorId: { not: null }, billDate: { gte: from, lt: until } },
+      select: { excavatorId: true, totalAmount: true, billDate: true },
+    }),
+    db.$queryRaw<AggRow[]>(Prisma.sql`
+      ${entriesCte({ businessId })}
+      SELECT "siteId",
+             bool_or(wtype = 'BUCKET') AS bucket, bool_or(wtype = 'BREAKER') AS breaker,
+             COALESCE(sum(hours), 0)::float8 AS hours
+      FROM val WHERE "rateMissing" AND date >= ${from}::timestamp AND date < ${until}::timestamp
+      GROUP BY "siteId"`),
+  ]);
+
+  const points = new Map<string, { revenue: ReturnType<typeof dec>; hours: number; unpricedHours: number }>();
+  const pointFor = (excavatorId: string, key: string) => {
+    const id = `${excavatorId}|${key}`;
+    let p = points.get(id);
+    if (!p) {
+      p = { revenue: dec(0), hours: 0, unpricedHours: 0 };
+      points.set(id, p);
+    }
+    return p;
+  };
+  for (const r of workRows) {
+    const p = pointFor(r.excavatorId as string, r.bucket as string);
+    p.revenue = p.revenue.plus(dec(r.revenue as string));
+    p.hours += Number(r.hours ?? 0);
+    p.unpricedHours += Number(r.unpricedHours ?? 0);
+  }
+  for (const b of directBills) {
+    if (!b.excavatorId) continue;
+    const p = pointFor(b.excavatorId, bucketOf(b.billDate));
+    p.revenue = p.revenue.plus(dec(b.totalAmount.toString()));
+  }
+
+  const siteNames = missingRows.length
+    ? await db.site.findMany({
+        where: { businessId, id: { in: missingRows.map((r) => r.siteId as string) } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const nameOf = new Map(siteNames.map((s) => [s.id, s.name]));
+
+  return {
+    period,
+    buckets,
+    machines: machines.map((m) => ({
+      ...m,
+      series: buckets.map((b): MachineEarningsPoint => {
+        const p = points.get(`${m.id}|${b.key}`);
+        return {
+          key: b.key,
+          revenue: p ? money(p.revenue.toString()) : 0,
+          hours: p ? num(p.hours) : 0,
+          unpricedHours: p ? num(p.unpricedHours) : 0,
+        };
+      }),
+    })),
+    /** Sites with unbilled Bucket / Breaker work in the window but no rate for that type. */
+    missingRateSites: missingRows
+      .map((r) => ({
+        id: r.siteId as string,
+        name: nameOf.get(r.siteId as string) ?? "Unknown site",
+        missing: [r.bucket ? "Bucket" : null, r.breaker ? "Breaker" : null].filter((x): x is string => x != null),
+        hours: num(r.hours),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// CUSTOMER WORK VALUE: approved work not yet on any bill, valued at the site rate in force on the
+// work date (the same `uv` Site Analysis uses), attributed to the customer on the JOB. Customer
+// totals are bills + this, so a customer whose trips are recorded but not billed no longer shows
+// Rs 0. Billed work is already inside the bills and is never added again.
+// ---------------------------------------------------------------------------------------------
+
+export type CustomerSiteWork = {
+  siteId: string;
+  siteName: string;
+  workType: "BUCKET" | "BREAKER" | "OTHER";
+  hours: number;
+  /** Rate applied (Rs/h); null = no rate set at the site for this work type. When rates changed
+   * during the work this is the latest one; `amount` is always exact. */
+  rate: number | null;
+  amount: number;
+};
+
+/** Unbilled work value per customer (all customers, or just `customerIds`). */
+export async function getUnbilledByCustomer(businessId: string, customerIds?: string[]) {
+  const filter = customerIds
+    ? customerIds.length
+      ? Prisma.sql`AND "customerId" IN (${Prisma.join(customerIds)})`
+      : Prisma.sql`AND FALSE`
+    : Prisma.empty;
+  const rows = await db.$queryRaw<{ customerId: string; amount: string }[]>(Prisma.sql`
+    ${entriesCte({ businessId })}
+    SELECT "customerId", COALESCE(sum(uv), 0)::text AS amount
+    FROM val WHERE NOT billed ${filter}
+    GROUP BY "customerId"`);
+  return new Map(rows.map((r) => [r.customerId, round2(dec(r.amount))]));
+}
+
+/** One customer's unbilled work, site by site and work type by work type. */
+export async function getCustomerUnbilledWork(businessId: string, customerId: string): Promise<CustomerSiteWork[]> {
+  const rows = await db.$queryRaw<AggRow[]>(Prisma.sql`
+    ${entriesCte({ businessId })}
+    SELECT v."siteId", min(st.name) AS "siteName", v.wtype,
+           COALESCE(sum(v.hours), 0)::float8 AS hours,
+           (array_agg(v.rate ORDER BY v.date DESC) FILTER (WHERE v.rate IS NOT NULL))[1]::text AS rate,
+           bool_or(v."rateMissing") AS missing,
+           COALESCE(sum(v.uv), 0)::text AS amount
+    FROM val v JOIN "Site" st ON st.id = v."siteId"
+    WHERE NOT v.billed AND v."customerId" = ${customerId} AND v.hours > 0
+    GROUP BY v."siteId", v.wtype
+    ORDER BY min(st.name), v.wtype`);
+  return rows.map((r) => ({
+    siteId: r.siteId as string,
+    siteName: r.siteName as string,
+    workType: r.wtype as CustomerSiteWork["workType"],
+    hours: num(r.hours),
+    rate: r.missing || r.rate == null ? null : money(r.rate),
+    amount: money(r.amount),
+  }));
 }
 
 export type MachineRow = Totals & {

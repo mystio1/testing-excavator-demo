@@ -5,7 +5,7 @@ import type { Actor } from "@/lib/agent/policy";
 import { db } from "@/lib/db";
 import { resolveAlias } from "@/lib/agent/aliases";
 import { recordTurn } from "@/lib/agent/diagnostics";
-import { askGroq, GroqError, modelFor } from "@/lib/agent/groq";
+import { answerFromKnowledge, askGroq, GroqError, modelFor } from "@/lib/agent/groq";
 import { dbTaskStore } from "@/lib/agent/task-store";
 import { assertWithinBudget, recordUsage } from "@/lib/agent/usage";
 import { agentTrail } from "@/lib/agent/trail";
@@ -106,7 +106,19 @@ export const POST = withApi("agent.message", async (req) => {
           history: input.history?.map((t) => ({ role: t.speaker, content: t.content })),
         },
         actor,
-        { record, store, ask, lookupAlias: resolveAlias },
+        {
+          record,
+          store,
+          ask,
+          lookupAlias: resolveAlias,
+          // Same model and the same meter as the turn itself: a help answer is
+          // a second call to the shared account and has to be counted like one.
+          help: (args) =>
+            answerFromKnowledge(args, {
+              model,
+              onUsage: ({ tokens }) => void recordUsage(businessId, { askCalls: 1, askTokens: tokens }),
+            }),
+        },
     );
 
     // Only while support has a window open on this business, and only for a

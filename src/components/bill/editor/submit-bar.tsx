@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils/currency";
@@ -20,6 +21,7 @@ export function SubmitBar({
   total,
   idleLabel,
   pendingLabel = "Saving...",
+  onPreview,
 }: {
   mode: "create" | "edit";
   pending: boolean;
@@ -32,6 +34,8 @@ export function SubmitBar({
   /** Button text; defaults to "Save Changes" (edit) / "Generate Bill" (create). */
   idleLabel?: string;
   pendingLabel?: string;
+  /** When given, a "Preview Bill" button sits beside the save button. */
+  onPreview?: () => void;
 }) {
   const isDesktop = useIsDesktop();
   const keyboardOpen = useKeyboardOpen();
@@ -70,15 +74,23 @@ export function SubmitBar({
 
       {isDesktop ? (
         <>
-          <Button
-            type="submit"
-            size="lg"
-            className="h-12 text-base"
-            disabled={pending || blocker !== null}
-            aria-describedby={blocker ? hintId : undefined}
-          >
-            {label}
-          </Button>
+          <div className={cn("grid gap-3", onPreview && "grid-cols-2")}>
+            {onPreview && (
+              <Button type="button" variant="outline" size="lg" className="h-12 text-base" disabled={pending} onClick={onPreview}>
+                <Eye className="size-4" />
+                Preview Bill
+              </Button>
+            )}
+            <Button
+              type="submit"
+              size="lg"
+              className="h-12 text-base"
+              disabled={pending || blocker !== null}
+              aria-describedby={blocker ? hintId : undefined}
+            >
+              {label}
+            </Button>
+          </div>
           {blocker && (
             <p id={hintId} className="-mt-2 text-center text-xs text-muted-foreground">
               {blocker}
@@ -108,6 +120,20 @@ export function SubmitBar({
                 <p className="text-xs leading-none text-muted-foreground">Total</p>
                 <p className="truncate text-lg leading-tight font-bold tabular-nums">{formatCurrency(total)}</p>
               </div>
+              {onPreview && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  className="h-12 shrink-0 px-3 text-base"
+                  disabled={pending}
+                  onClick={onPreview}
+                  aria-label="Preview Bill"
+                >
+                  <Eye className="size-4" />
+                  Preview
+                </Button>
+              )}
               <Button
                 type="submit"
                 size="lg"

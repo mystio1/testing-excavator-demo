@@ -1,13 +1,11 @@
 import { db } from "@/lib/db";
 import { fail } from "@/lib/api-error";
 import { recordAudit, type AuditActor } from "@/lib/audit";
-import { round2, sum, ZERO, type Decimal } from "@/lib/money";
 import { isStale, lockBusiness, resourceModified, withTx, type Tx } from "@/lib/tx";
 import { computeServiceStatus } from "@/lib/services/serviceStatus";
 import { listOpenWorkRequestsForExcavator } from "@/lib/services/operatorWorkRequests";
 import { findOrCreateSite } from "@/lib/services/sites";
 import { lockOwnedExcavator, roundHours } from "@/lib/services/workSessions";
-import { currentMonthRange } from "@/lib/utils/dates";
 import type { AddExcavatorInput, EditExcavatorInput } from "@/lib/validation/excavator";
 
 async function getMaintenanceSettings(businessId: string) {
@@ -70,62 +68,6 @@ export async function listExcavators(businessId: string) {
       serviceStatus,
     };
   });
-}
-
-/** Backs the "Machine Performance" section on the excavators list page —
- * hours worked and revenue billed against each machine this calendar month.
- * Revenue combines both billing paths: BillItem.amount for normal
- * WorkSession-based bills, and Bill.totalAmount directly for isDirect bills
- * (which have no BillItem rows). */
-export async function getMachinePerformanceSummary(businessId: string) {
-  const { start, end } = currentMonthRange();
-
-  const [excavators, billItems, directBills] = await Promise.all([
-    db.excavator.findMany({
-      where: { businessId, isArchived: false },
-      select: {
-        id: true,
-        name: true,
-        machineNumber: true,
-        status: true,
-        workSessions: {
-          where: {
-            status: "COMPLETED",
-            OR: [{ startDate: { gte: start, lte: end } }, { endDate: { gte: start, lte: end } }],
-          },
-          select: { totalHours: true },
-        },
-      },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    }),
-    db.billItem.findMany({
-      where: { bill: { businessId, billDate: { gte: start, lte: end } } },
-      select: { excavatorId: true, amount: true },
-    }),
-    db.bill.findMany({
-      where: { businessId, isDirect: true, billDate: { gte: start, lte: end }, excavatorId: { not: null } },
-      select: { excavatorId: true, totalAmount: true },
-    }),
-  ]);
-
-  // Revenue is money: summed as exact Decimals, handed to the UI as a number.
-  const revenueByExcavator = new Map<string, Decimal>();
-  for (const item of billItems) {
-    revenueByExcavator.set(item.excavatorId, (revenueByExcavator.get(item.excavatorId) ?? ZERO).plus(item.amount));
-  }
-  for (const bill of directBills) {
-    if (!bill.excavatorId) continue;
-    revenueByExcavator.set(bill.excavatorId, (revenueByExcavator.get(bill.excavatorId) ?? ZERO).plus(bill.totalAmount));
-  }
-
-  return excavators.map((e) => ({
-    id: e.id,
-    name: e.name,
-    machineNumber: e.machineNumber,
-    status: e.status,
-    hoursThisMonth: round2(sum(e.workSessions.map((s) => s.totalHours))).toNumber(),
-    revenueThisMonth: round2(revenueByExcavator.get(e.id) ?? ZERO).toNumber(),
-  }));
 }
 
 export async function createExcavator(

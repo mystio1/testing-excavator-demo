@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { swrFetcher } from "@/lib/api-client";
@@ -10,16 +11,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/bill/editor/form-parts";
 import { GenerateBillForm } from "./generate-bill-form";
+import { sitesForCustomer, type SiteOption } from "@/components/bill/site-defaults";
 import Loading from "../../loading";
 
 type CustomerOption = { id: string; name: string; companyName: string | null };
-type SiteOption = { id: string; name: string };
 type ExcavatorOption = { id: string; name: string; machineNumber: string | null };
 type Session = {
   id: string;
   excavatorName: string;
   machineNumber: string | null;
+  siteId: string;
   siteName: string;
+  attachment: string | null;
   startDate: string;
   endDate: string;
   totalHours: number;
@@ -53,6 +56,16 @@ export default function NewBillPage() {
 
   const { data } = useSWR<FullData | BaseData>(`/api/bills/new?${query.toString()}`, swrFetcher);
 
+  // Step 1: choosing a customer pre-selects the site linked to them (still changeable).
+  const [pickedCustomer, setPickedCustomer] = useState("");
+  const [pickedSite, setPickedSite] = useState("");
+  const allSites = data?.sites ?? [];
+  const linkedSites = pickedCustomer ? sitesForCustomer(allSites, pickedCustomer) : [];
+  function pickCustomer(id: string) {
+    setPickedCustomer(id);
+    setPickedSite(sitesForCustomer(allSites, id)[0]?.id ?? "");
+  }
+
   if (!data) return <Loading />;
   const { customers, sites, excavators } = data;
 
@@ -70,7 +83,14 @@ export default function NewBillPage() {
                 ) : (
                   <Field label="Customer">
                     {(id) => (
-                      <NativeSelect id={id} name="customerId" required defaultValue="" className="h-11 min-w-0">
+                      <NativeSelect
+                        id={id}
+                        name="customerId"
+                        required
+                        value={pickedCustomer}
+                        onChange={(e) => pickCustomer(e.target.value)}
+                        className="h-11 min-w-0"
+                      >
                         <option value="" disabled>
                           Choose a customer
                         </option>
@@ -86,13 +106,32 @@ export default function NewBillPage() {
                 )}
                 <Field label="Site (Optional)">
                   {(id) => (
-                    <NativeSelect id={id} name="siteId" defaultValue="" className="h-11 min-w-0">
+                    <NativeSelect
+                      id={id}
+                      name="siteId"
+                      value={pickedSite}
+                      onChange={(e) => setPickedSite(e.target.value)}
+                      className="h-11 min-w-0"
+                    >
                       <option value="">All Sites</option>
-                      {sites.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
+                      {linkedSites.length > 0 && (
+                        <optgroup label="This customer's sites">
+                          {linkedSites.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label={linkedSites.length > 0 ? "Other sites" : "Sites"}>
+                        {sites
+                          .filter((s) => !linkedSites.includes(s))
+                          .map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                      </optgroup>
                     </NativeSelect>
                   )}
                 </Field>
@@ -149,6 +188,7 @@ export default function NewBillPage() {
         )}
         <GenerateBillForm
           customerId={customerId}
+          sites={sites}
           sessions={full.sessions}
           bankAccounts={full.bankAccounts}
           businessGstNumber={full.businessGstNumber}

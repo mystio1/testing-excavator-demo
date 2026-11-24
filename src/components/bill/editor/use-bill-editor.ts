@@ -6,6 +6,7 @@ import { mutate } from "swr";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { useApiForm } from "@/lib/use-api-form";
 import { useIdempotencyKey } from "../use-idempotency-key";
+import { siteRateFor, sitesForCustomer } from "../site-defaults";
 import {
   buildPayload,
   computeTotals,
@@ -52,7 +53,23 @@ export function useBillEditor({
   const gridRef = useRef<HTMLDivElement>(null);
 
   const machineById = useMemo(() => new Map(options.excavators.map((e) => [e.id, e])), [options.excavators]);
-  const siteFor = (excavatorId: string) => machineById.get(excavatorId)?.currentSite?.name ?? "";
+  const siteByName = useMemo(
+    () => new Map(options.sites.map((s) => [s.name.trim().toLowerCase(), s])),
+    [options.sites],
+  );
+  /** The saved Site Analysis rate for a site name + tool, or null. */
+  const autoRate = (siteName: string, attachment: string) =>
+    siteRateFor(siteByName.get(siteName.trim().toLowerCase()), attachment);
+  /** Default site for a row: the site linked to the chosen customer, else the machine's current site.
+   * (`fields` is read when called, after it is declared below.) */
+  const siteFor = (excavatorId: string) =>
+    sitesForCustomer(options.sites, fields.customerId)[0]?.name || (machineById.get(excavatorId)?.currentSite?.name ?? "");
+  /** A row with no rate takes its site's saved rate for its tool. */
+  const withAutoRate = (row: Row): Row => {
+    if (row.rate) return row;
+    const rate = autoRate(row.siteName, row.attachment);
+    return rate != null ? { ...row, rate: String(rate) } : row;
+  };
   const rowContext = (): RowContext => ({
     makeKey: () => keyRef.current++,
     firstMachineId: options.excavators[0]?.id ?? "",
@@ -86,6 +103,15 @@ export function useBillEditor({
   }));
   const setField = <K extends keyof BillFields>(key: K, value: BillFields[K]) =>
     setFields((f) => ({ ...f, [key]: value }));
+  const customerSite = sitesForCustomer(options.sites, fields.customerId)[0];
+  /** Choosing the customer fills their site (and its rates) into rows that have none yet. */
+  const setCustomer = (customerId: string) => {
+    setField("customerId", customerId);
+    if (mode !== "create") return;
+    const site = sitesForCustomer(options.sites, customerId)[0];
+    if (!site) return;
+    setRows((prev) => prev.map((r) => withAutoRate(r.siteName ? r : { ...r, siteName: site.name })));
+  };
   /** A new bill follows the default bank account of the chosen bill type. */
   const setBillType = (type: BillType) =>
     setFields((f) => ({ ...f, billType: type, bankAccountId: mode === "create" ? defaultBank(type) : f.bankAccountId }));
@@ -135,12 +161,26 @@ export function useBillEditor({
   };
 
   const rowOps: RowOps = {
-    update: (key, patch) => setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r))),
+    // Changing a row's site or tool moves its rate to that site's saved rate, unless the
+    // owner typed a rate of their own.
+    update: (key, patch) =>
+      setRows((prev) =>
+        prev.map((r) => {
+          if (r.key !== key) return r;
+          const next = { ...r, ...patch };
+          if ("siteName" in patch || "attachment" in patch) {
+            const before = autoRate(r.siteName, r.attachment);
+            const after = autoRate(next.siteName, next.attachment);
+            if (after != null && (!r.rate || Number(r.rate) === before)) next.rate = String(after);
+          }
+          return next;
+        }),
+      ),
     setMachine: (key, excavatorId) =>
       setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...machinePatch(r, excavatorId, siteFor) } : r))),
     setFromDate: (key, fromDate) =>
       setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...fromDatePatch(r, fromDate) } : r))),
-    add: () => setRows((prev) => [...prev, newRowFrom(prev[prev.length - 1], rowContext())]),
+    add: () => setRows((prev) => [...prev, withAutoRate(newRowFrom(prev[prev.length - 1], rowContext()))]),
     duplicate: (key) =>
       setRows((prev) => {
         const i = prev.findIndex((r) => r.key === key);
@@ -172,7 +212,7 @@ export function useBillEditor({
   const addQuickFillRows = (params: QuickFillParams): string | null => {
     const result = quickFillRows(params, rowContext());
     if ("error" in result) return result.error;
-    setRows((prev) => [...prev, ...result.rows]);
+    setRows((prev) => [...prev, ...result.rows.map(withAutoRate)]);
     return null;
   };
 
@@ -230,6 +270,8 @@ export function useBillEditor({
   }
 
   return {
+    setCustomer,
+    customerSite,
     mode,
     isDirect,
     fields,
