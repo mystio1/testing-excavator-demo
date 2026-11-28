@@ -68,9 +68,10 @@ export const KNOWLEDGE: KnowledgeEntry[] = [
   {
     id: "assistant.what-it-can-do",
     title: "What the assistant can do",
-    keywords: ["assistant", "tum kya kar sakte", "help", "madad", "voice", "bolkar", "kya kar sakta"],
+    keywords: ["assistant", "tum kya kar sakte", "help", "madad", "voice", "bolkar", "kya kar sakta", "reading by voice", "machine kaise pehchane"],
     body:
-      "The assistant can fill in common forms for you by voice or text: start or stop work on a machine, add a day's reading with diesel, record an operator advance or payment, check a machine's service due or status, and similar tasks. " +
+      "The assistant can fill in common forms for you by voice or text: start or stop work on a machine, record a day's work with the start and end hour meter and any diesel, record an operator advance or payment, check a machine's service due or status, and similar tasks. " +
+      "You can name a machine, or describe it by its operator or site (\"Patil wali machine\"); it reads back the machine with its operator and site before saving, and asks if it is not sure. " +
       "It always shows what it will save and waits for your yes, and it only says something is saved after the screen shows it. " +
       "It can also explain how any part of the app works. It cannot create bills or service records by voice; it can tell you the steps.",
   },

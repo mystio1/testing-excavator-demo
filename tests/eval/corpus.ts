@@ -346,6 +346,52 @@ export const CORPUS: EvalCase[] = [
   { id: "c-thanks-hi", lang: "hi", text: "shukriya", category: "conversation", expect: { kind: "reply" } },
   { id: "c-help-hi", lang: "hi", text: "tum kya kar sakte ho?", category: "conversation", expect: { kind: ["reply", "help"] } },
 
+  // --- context: the questions from a real owner's screenshot (2026-11-27) -----
+  {
+    id: "x-most-pending-mr-misheard",
+    lang: "mr",
+    text: "मारा आये सांग्ज सर्वाजजस्त बिल पेमेंट कुछला कस्टमर च राहिला है।",
+    category: "read",
+    expect: { workflowId: "customer.list", absent: ["customer"] },
+    note: "'सर्वात जास्त' misheard by speech; was answered with a count instead of a name",
+  },
+  {
+    id: "x-most-pending-mr-name-confusion",
+    lang: "mr",
+    text: "शर्वाज्यस्त पेमेंट पेंडिंग कोना जारे?",
+    category: "read",
+    expect: { workflowId: "customer.list", absent: ["customer"] },
+    note: "'शर्वाज्यस्त' was taken for a customer's name",
+  },
+  {
+    id: "x-most-pending-hi",
+    lang: "hi",
+    text: "sabse jyada payment kis customer ka baaki hai?",
+    category: "read",
+    expect: { workflowId: "customer.list" },
+  },
+  {
+    id: "x-reading-start-end-hi",
+    lang: "hi",
+    text: "Komatsu aaj 1200 se 1208 chali, 30 litre diesel, bucket",
+    category: "write",
+    expect: { workflowId: "reading.add", fields: { machine: "Komatsu", startHourMeter: 1200, endHourMeter: 1208, dieselLiters: 30 } },
+  },
+  {
+    id: "x-reading-by-operator-hi",
+    lang: "hi",
+    text: "Patil wali machine ka aaj ka reading 3400, 20 litre diesel",
+    category: "write",
+    expect: { workflowId: "reading.add", fields: { machineOperator: "Patil", endHourMeter: 3400, dieselLiters: 20 } },
+  },
+  {
+    id: "x-stop-by-site-mr",
+    lang: "mr",
+    text: "वाकड साईटवरचं मशीन बंद कर, मीटर 3400",
+    category: "write",
+    expect: { workflowId: "work.stop", fields: { endHourMeter: 3400 } },
+  },
+
   // --- knowledge: questions ABOUT the app go to the guide, never to a guess ---
   { id: "k-bill-how-hi", lang: "hi", text: "bill kaise banate hai?", category: "knowledge", expect: { kind: "help", mentions: ["bill"] } },
   { id: "k-bill-how-en", lang: "en", text: "How do I make a GST bill for a customer?", category: "knowledge", expect: { kind: "help", mentions: ["bill"] } },

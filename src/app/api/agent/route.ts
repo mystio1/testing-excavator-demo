@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { resolveAlias } from "@/lib/agent/aliases";
 import { recordTurn } from "@/lib/agent/diagnostics";
 import { answerFromKnowledge, askGroq, GroqError, modelFor } from "@/lib/agent/groq";
+import { loadMachines, readFacts } from "@/lib/agent/facts";
 import { dbTaskStore } from "@/lib/agent/task-store";
 import { assertWithinBudget, recordUsage } from "@/lib/agent/usage";
 import { agentTrail } from "@/lib/agent/trail";
@@ -111,6 +112,7 @@ export const POST = withApi("agent.message", async (req) => {
           store,
           ask,
           lookupAlias: resolveAlias,
+          listMachines: loadMachines,
           // Same model and the same meter as the turn itself: a help answer is
           // a second call to the shared account and has to be counted like one.
           help: (args) =>
@@ -175,7 +177,7 @@ export const POST = withApi("agent.message", async (req) => {
         error: input.error,
         screenText: input.screenText,
       },
-      { record, store },
+      { record, store, facts: readFacts },
       input.lang,
     ),
   );

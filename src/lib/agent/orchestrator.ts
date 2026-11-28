@@ -6,6 +6,13 @@ import { isEntityKind, rememberAlias, type EntityKind } from "./aliases";
 import { resolveSpokenDay } from "./dates";
 import { answerFromKnowledge, answerFromScreen, askGroq, GroqError, type GroqTurn } from "./groq";
 import { relevantKnowledge } from "./knowledge";
+import {
+  describeMachine,
+  identifyMachine,
+  machineLabel,
+  NEEDS_ACTIVE_JOB,
+  type MachineRecord,
+} from "./machines";
 import { planWorkflow, type UiOperation } from "./plan";
 import { authorize, ownsTask, requiresConfirmation, type Actor } from "./policy";
 import {
@@ -399,6 +406,49 @@ const NOT_IN_GUIDE: Localized = {
   pa: "ਇਹ ਜਾਣਕਾਰੀ ਐਪ ਗਾਈਡ ਵਿੱਚ ਨਹੀਂ ਹੈ। ਸਕ੍ਰੀਨ 'ਤੇ ਵੇਖੋ, ਜਾਂ ਕਿਸੇ ਹੋਰ ਤਰੀਕੇ ਨਾਲ ਪੁੱਛੋ।",
 };
 
+// --- which machine ------------------------------------------------------------
+// Said before anything is approved, so the owner approves a MACHINE, not a word.
+// Not reviewed by a native speaker for gu/ta/te/kn/bn/pa, which fall back to
+// English (see i18n.ts).
+
+const MACHINE_WORDS: Localized<{ operator: string; at: string }> = {
+  en: { operator: "operator", at: "site" },
+  hi: { operator: "ऑपरेटर", at: "साइट" },
+  mr: { operator: "ऑपरेटर", at: "साईट" },
+};
+
+const THIS_MACHINE: Localized<(d: string) => string> = {
+  en: (d) => `Machine: ${d}.`,
+  hi: (d) => `मशीन: ${d}.`,
+  mr: (d) => `मशीन: ${d}.`,
+};
+
+const WHICH_OF_THESE: Localized<(list: string) => string> = {
+  en: (list) => `Which machine — ${list}?`,
+  hi: (list) => `कौन सी मशीन — ${list}?`,
+  mr: (list) => `कोणते मशीन — ${list}?`,
+};
+
+const OR_WORD: Localized = { en: " or ", hi: " या ", mr: " की " };
+
+const MACHINE_NOT_FOUND: Localized<(heard: string) => string> = {
+  en: (h) => `I couldn't find a machine called "${h}". Which operator runs it, or which site is it at?`,
+  hi: (h) => `"${h}" नाम की मशीन नहीं मिली. उस पर कौन सा ऑपरेटर है, या वो किस साइट पर है?`,
+  mr: (h) => `"${h}" नावाचे मशीन सापडले नाही. त्यावर कोणता ऑपरेटर आहे, किंवा ते कोणत्या साईटवर आहे?`,
+};
+
+const WHICH_MACHINE_HINT: Localized = {
+  en: "Which machine? If you're not sure of its name, tell me its operator or its site.",
+  hi: "कौन सी मशीन? नाम याद न हो तो उसका ऑपरेटर या साइट बताइए.",
+  mr: "कोणते मशीन? नाव आठवत नसेल तर त्याचा ऑपरेटर किंवा साईट सांगा.",
+};
+
+const NO_RUNNING_JOB: Localized<(d: string) => string> = {
+  en: (d) => `${d} has no job running right now, so there is nothing to add this to. Start work on it first.`,
+  hi: (d) => `${d} पर अभी कोई काम चालू नहीं है. पहले उस पर काम शुरू करें.`,
+  mr: (d) => `${d} वर सध्या कोणतेही काम चालू नाही. आधी त्यावर काम सुरू करा.`,
+};
+
 /** Understood, but the steps could not be worked out. */
 const CANNOT_PLAN: Localized = {
   en: "I couldn't work out how to do that.",
@@ -570,6 +620,9 @@ export async function handleMessage(
     lookupAlias?: LookupAliasFn;
     listRecords?: ListRecordsFn;
     help?: HelpFn;
+    /** The business's machines, for identifying one before approval. Absent
+     * (tests, older callers) means the spoken name is passed on as before. */
+    listMachines?: (businessId: string) => Promise<MachineRecord[]>;
   } = {},
 ): Promise<AgentReply> {
   const store = deps.store ?? defaultStore;
@@ -664,6 +717,20 @@ export async function handleMessage(
 
   // Only fields this workflow declares survive; anything else the model
   // returned is dropped rather than carried toward a form.
+  // How the owner described the machine when not by name: "Patil wali",
+  // "Wakad wali". Taken before pickKnownFields, which keeps only the fields a
+  // workflow declares. A workflow's OWN operator or site field (the operator
+  // being assigned, the site a job starts at) is never mistaken for one.
+  const declares = (name: string) => workflow.fields.some((f) => f.name === name);
+  const hintOf = (key: string) => {
+    const v = understood.fields[key];
+    return typeof v === "string" && v.trim() ? v.trim() : undefined;
+  };
+  const machineHints = {
+    operator: hintOf("machineOperator") ?? (declares("operator") ? undefined : hintOf("operator")),
+    site: hintOf("machineSite") ?? (declares("site") ? undefined : hintOf("site")),
+  };
+
   const accepted = pickKnownFields(workflow, understood.fields);
 
   // A mishearing the owner has already corrected once is rewritten here,
@@ -737,6 +804,50 @@ export async function handleMessage(
     }
   }
 
+  // Which machine, settled now rather than in the browser after the yes.
+  // Skipped for a batch ("all machines"), which names its records itself.
+  let machineLine = "";
+  let announceMachine = false;
+  const machineSpec = workflow.fields.find((f) => f.entityKind === "machine");
+  if (machineSpec && !working.batch && deps.listMachines) {
+    const said = working.fields[machineSpec.name];
+    const heard = typeof said === "string" ? said : said === undefined ? undefined : String(said);
+    const records = await deps.listMachines(actor.businessId);
+    const found = identifyMachine(records, { machine: heard, ...machineHints });
+    const without = (t: AgentTask): AgentTask => {
+      const rest = { ...t.fields };
+      delete rest[machineSpec.name];
+      return { ...t, fields: rest, confirmedFingerprint: null };
+    };
+    const words = say(MACHINE_WORDS, input.lang);
+
+    if (found.kind === "found") {
+      const label = machineLabel(found.machine);
+      announceMachine = heard !== label;
+      working = setFields(working, { [machineSpec.name]: label });
+      const described = describeMachine(found.machine, words);
+      if (NEEDS_ACTIVE_JOB.has(workflow.id) && !found.machine.hasActiveJob) {
+        working = await save(store, transition(without(working), "COLLECTING_DETAILS"));
+        return { taskId: working.id, state: working.state, say: say(NO_RUNNING_JOB, input.lang)(described) };
+      }
+      machineLine = say(THIS_MACHINE, input.lang)(described);
+    } else if (found.kind === "choose") {
+      working = await save(store, transition(without(working), "COLLECTING_DETAILS"));
+      const list = found.options
+        .slice(0, 4)
+        .map((m) => describeMachine(m, words))
+        .join(say(OR_WORD, input.lang));
+      return { taskId: working.id, state: working.state, say: say(WHICH_OF_THESE, input.lang)(list) };
+    } else if (records.length > 0) {
+      working = await save(store, transition(without(working), "COLLECTING_DETAILS"));
+      return {
+        taskId: working.id,
+        state: working.state,
+        say: found.heard ? say(MACHINE_NOT_FOUND, input.lang)(found.heard) : say(WHICH_MACHINE_HINT, input.lang),
+      };
+    }
+  }
+
   const stillNeeded = missingFields(workflow, working.fields);
   if (stillNeeded.length > 0) {
     working = await save(store, transition(working, "COLLECTING_DETAILS"));
@@ -746,7 +857,11 @@ export async function handleMessage(
       state: working.state,
       // In a batch, say which record this is and how far in: somebody who
       // cannot see a progress bar has no other way to know four are coming.
-      say: working.batch ? `${startingLine(working.batch, input.lang)} ${question}`.trim() : question,
+      // A machine identified this turn is read back first, so a wrong guess
+      // is caught before the next question, not at the end.
+      say: working.batch
+        ? `${startingLine(working.batch, input.lang)} ${question}`.trim()
+        : `${announceMachine ? `${machineLine} ` : ""}${question}`.trim(),
     };
   }
 
@@ -755,7 +870,9 @@ export async function handleMessage(
     return {
       taskId: working.id,
       state: working.state,
-      say: say(SHALL_I_SAVE, task.lang),
+      // "Machine: JCB-01 (operator Patil, site Wakad). Shall I save?" — the
+      // owner approves the machine they can recognise, not the word they said.
+      say: `${machineLine ? `${machineLine} ` : ""}${say(SHALL_I_SAVE, task.lang)}`,
       confirm: { summary: summarize(working.fields) },
     };
   }
@@ -1129,7 +1246,15 @@ export async function handleResult(
   taskId: string,
   actor: Actor,
   result: { verified: boolean; error?: string; screenText?: string },
-  deps: { answer?: AnswerFn; record?: RecordFn; store?: TaskStore } = {},
+  deps: {
+    answer?: AnswerFn;
+    record?: RecordFn;
+    store?: TaskStore;
+    /** The real rows behind a list screen (facts.ts), so "who owes the most"
+     * is answered from every customer, sorted, and not from whichever rows
+     * fitted in the page text. Absent in tests and older callers. */
+    facts?: (workflowId: string, businessId: string) => Promise<string | null>;
+  } = {},
   /** For the one reply that cannot read it off the task: the task is gone. */
   lang: AgentLang = "en",
 ): Promise<AgentReply> {
@@ -1155,15 +1280,18 @@ export async function handleResult(
     // something that was saved; being asked when a service is due and told
     // that is nonsense.
     if (workflow?.effect === "READ") {
-      if (!result.screenText?.trim()) {
+      const facts = deps.facts && task.workflowId ? await deps.facts(task.workflowId, task.businessId) : null;
+      // Figures first: they are complete and sorted, the page text is a cut.
+      const screenText = [facts, result.screenText?.trim()].filter(Boolean).join("\n\nON SCREEN:\n");
+      if (!screenText.trim()) {
         return { taskId: done.id, state: done.state, say: say(NOTHING_TO_READ, done.lang) };
       }
       try {
         const answer = deps.answer
-          ? await deps.answer({ question: task.question ?? "", screenText: result.screenText, lang: task.lang })
+          ? await deps.answer({ question: task.question ?? "", screenText, lang: task.lang })
           : await answerFromScreen({
               question: task.question ?? "",
-              screenText: result.screenText,
+              screenText,
               lang: task.lang,
             });
         return { taskId: done.id, state: done.state, say: answer };

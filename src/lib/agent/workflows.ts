@@ -309,7 +309,7 @@ export const WORKFLOWS: Workflow[] = [
     id: "reading.add",
     status: "ready",
     effect: "WRITE",
-    summary: "Add a day to a running job: meter, tool, diesel.",
+    summary: "Record a day's work on a running job: start and end meter, diesel, tool.",
     route: "/excavators/detail",
     openWith: "add-reading-trigger",
     fields: [
@@ -320,6 +320,20 @@ export const WORKFLOWS: Workflow[] = [
         required: true,
         control: "date",
         prompt: ask("Which day?", "किस दिन का?", "कोणत्या दिवसाचे?"),
+      },
+      {
+        // Optional: the form pre-fills it with the machine's current meter,
+        // which is right whenever the last reading was entered. Said aloud
+        // ("1200 se 1208"), it overrides that default.
+        name: "startHourMeter",
+        kind: "hours",
+        required: false,
+        control: "reading-startHourMeter",
+        prompt: ask(
+          "What was the hour meter at the start?",
+          "काम शुरू होने पर घंटा मीटर कितना था?",
+          "काम सुरू झाल्यावर तास मीटर किती होते?",
+        ),
       },
       {
         name: "endHourMeter",
@@ -347,6 +361,8 @@ export const WORKFLOWS: Workflow[] = [
       { action: "pickFromList", control: "machine-card", fromField: "machine" },
       { action: "click", control: "add-reading-trigger" },
       { action: "fill", control: "date", fromField: "date" },
+      // Skipped when unsaid, so the form's own default (current meter) stays.
+      { action: "fill", control: "reading-startHourMeter", fromField: "startHourMeter" },
       { action: "fill", control: "endHourMeter", fromField: "endHourMeter" },
       // Optional: skipped when no diesel was mentioned, so the box stays empty
       // rather than being zeroed.

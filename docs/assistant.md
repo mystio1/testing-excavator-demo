@@ -246,6 +246,49 @@ button, rule or formula changes, change its entry in the same commit** — an
 out-of-date sentence there is a wrong answer read aloud to someone who cannot
 check it.
 
+## Which machine, before the yes
+
+The spoken machine name used to travel untouched to the approval card
+("machine: JCB") and was only matched against the machine cards in the browser
+after the owner had approved. So the owner approved a word, not a machine.
+With two JCBs, or a machine they know by its operator ("Patil wali machine")
+or its site ("Wakad wali"), there was no way to say which one was about to be
+written to.
+
+`machines.ts` now settles it on the server, in `handleMessage`, before any
+question or approval. It uses the name or number, the operator on the machine
+(`machineOperator`) and the site it is at (`machineSite`):
+
+| Outcome | What the owner hears |
+|---|---|
+| One machine fits | "Machine: JCB MH12-01 (operator Banda Patil, site Wakad). Shall I save?" The card label is written into the field, so the browser lands on exactly that card |
+| Two fit | "Which machine — JCB MH12-01 (operator Banda Patil, site Wakad) or JCB MH12-02 (operator Sagar Jadhav, site Hinjawadi)?" |
+| A name matching no machine | Tried as an operator, then as a site ("Sagar wala"). If still nothing: "I couldn't find a machine called 'Volvo'. Which operator runs it, or which site is it at?" |
+| Nothing said | "Which machine? If you're not sure of its name, tell me its operator or its site." (With only one machine, it is assumed and read back.) |
+| A reading or stop on a machine with no running job | Said up front, instead of failing in the form after the yes |
+
+A workflow's own operator or site field (the operator being assigned, the site
+a job starts at) is never taken as a clue to the machine.
+
+`reading.add` also takes the opening meter now ("1200 se 1208" sets the start
+and end meter), next to diesel litres and the tool.
+
+## Answering "who owes the most"
+
+A read was answered from the page's visible text, cut to 1,200 characters. On
+the Customers page that is the summary cards and the first customer or two,
+alphabetically. Measured from a real owner: asked which customer had the most
+payment pending, it answered "four of five customers have payments pending".
+
+So list reads now get their rows from the same services the screens use,
+sorted by what people ask about (`facts.ts`): customers and bills by amount
+owed, operators by salary owed, sites by pending, machines with operator, site
+and meter. The page text follows as a backup. The answer prompt is told to name
+the record with its figure when asked for the most or least. The router prompt
+learnt that "सर्वात जास्त" / "sabse jyada" mean "the most", including the
+mis-heard forms speech produces ("शर्वाज्यस्त" was once taken for a customer's
+name), and that a short follow-up continues the last request.
+
 ## When it cannot answer
 
 Three things, in order of how often they matter:

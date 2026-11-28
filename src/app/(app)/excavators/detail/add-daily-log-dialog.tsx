@@ -135,6 +135,9 @@ export function AddDailyLogDialog({
                 </Label>
                 <Input
                   id="startHourMeter"
+                  // Distinct from Start Work's "startHourMeter" so the assistant
+                  // can never type a reading's opening meter into the wrong form.
+                  data-agent-id="reading-startHourMeter"
                   name="startHourMeter"
                   type="number"
                   step="0.1"
